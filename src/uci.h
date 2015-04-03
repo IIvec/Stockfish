@@ -1,7 +1,7 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2014 Marco Costalba, Joona Kiiski, Tord Romstad
+  Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -45,13 +45,13 @@ class Option {
   typedef void (*OnChange)(const Option&);
 
 public:
-  Option(OnChange = NULL);
-  Option(bool v, OnChange = NULL);
-  Option(const char* v, OnChange = NULL);
-  Option(int v, int min, int max, OnChange = NULL);
+  Option(OnChange = nullptr);
+  Option(bool v, OnChange = nullptr);
+  Option(const char* v, OnChange = nullptr);
+  Option(int v, int min, int max, OnChange = nullptr);
 
-  Option& operator=(const std::string& v);
-  void operator<<(const Option& o);
+  Option& operator=(const std::string&);
+  void operator<<(const Option&);
   operator int() const;
   operator std::string() const;
 
@@ -66,10 +66,10 @@ private:
 
 void init(OptionsMap&);
 void loop(int argc, char* argv[]);
-
-std::string format_value(Value v, Value alpha = -VALUE_INFINITE, Value beta = VALUE_INFINITE);
-std::string format_square(Square s);
-std::string format_move(Move m, bool chess960);
+std::string value(Value v);
+std::string square(Square s);
+std::string move(Move m, bool chess960);
+std::string pv(const Position& pos, Depth depth, Value alpha, Value beta);
 Move to_move(const Position& pos, std::string& str);
 
 } // namespace UCI

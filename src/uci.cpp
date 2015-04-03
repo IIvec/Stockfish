@@ -1,7 +1,7 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2014 Marco Costalba, Joona Kiiski, Tord Romstad
+  Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -17,7 +17,6 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -27,6 +26,7 @@
 #include "position.h"
 #include "search.h"
 #include "thread.h"
+#include "timeman.h"
 #include "tt.h"
 #include "uci.h"
 
@@ -39,9 +39,9 @@ namespace {
   // FEN string of the initial position, normal chess
   const char* StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-  // Keep a track of the position keys along the setup moves (from the start position
-  // to the position just before the search starts). This is needed by the repetition
-  // draw detection code.
+  // Stack to keep track of the position states along the setup moves (from the
+  // start position to the position just before the search starts). Needed by
+  // 'draw by repetition' detection.
   Search::StateStackPtr SetupStates;
 
 
@@ -69,13 +69,13 @@ namespace {
         return;
 
     pos.set(fen, Options["UCI_Chess960"], Threads.main());
-    SetupStates = Search::StateStackPtr(new std::stack<StateInfo>());
+    SetupStates = Search::StateStackPtr(new std::stack<StateInfo>);
 
     // Parse move list (if any)
     while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE)
     {
         SetupStates->push(StateInfo());
-        pos.do_move(m, SetupStates->top());
+        pos.do_move(m, SetupStates->top(), pos.gives_check(m, CheckInfo(pos)));
     }
   }
 
@@ -105,7 +105,7 @@ namespace {
 
 
   // go() is called when engine receives the "go" UCI command. The function sets
-  // the thinking time and other parameters from the input string, and starts
+  // the thinking time and other parameters from the input string, then starts
   // the search.
 
   void go(const Position& pos, istringstream& is) {
@@ -114,7 +114,6 @@ namespace {
     string token;
 
     while (is >> token)
-    {
         if (token == "searchmoves")
             while (is >> token)
                 limits.searchmoves.push_back(UCI::to_move(pos, token));
@@ -130,7 +129,6 @@ namespace {
         else if (token == "mate")      is >> limits.mate;
         else if (token == "infinite")  limits.infinite = true;
         else if (token == "ponder")    limits.ponder = true;
-    }
 
     Threads.start_thinking(pos, limits, SetupStates);
   }
@@ -138,10 +136,11 @@ namespace {
 } // namespace
 
 
-/// Wait for a command from the user, parse this text string as an UCI command,
-/// and call the appropriate functions. Also intercepts EOF from stdin to ensure
-/// that we exit gracefully if the GUI dies unexpectedly. In addition to the UCI
-/// commands, the function also supports a few debug commands.
+/// UCI::loop() waits for a command from stdin, parses it and calls the appropriate
+/// function. Also intercepts EOF from stdin to ensure gracefully exiting if the
+/// GUI dies unexpectedly. When called with some command line arguments, e.g. to
+/// run 'bench', once the command is executed the function returns immediately.
+/// In addition to the UCI ones, also some additional debug commands are supported.
 
 void UCI::loop(int argc, char* argv[]) {
 
@@ -152,7 +151,7 @@ void UCI::loop(int argc, char* argv[]) {
       cmd += std::string(argv[i]) + " ";
 
   do {
-      if (argc == 1 && !getline(cin, cmd)) // Block here waiting for input
+      if (argc == 1 && !getline(cin, cmd)) // Block here waiting for input or EOF
           cmd = "quit";
 
       istringstream is(cmd);
@@ -160,21 +159,41 @@ void UCI::loop(int argc, char* argv[]) {
       token.clear(); // getline() could return empty or blank line
       is >> skipws >> token;
 
-      if (token == "quit" || token == "stop" || token == "ponderhit")
+      // The GUI sends 'ponderhit' to tell us to ponder on the same move the
+      // opponent has played. In case Signals.stopOnPonderhit is set we are
+      // waiting for 'ponderhit' to stop the search (for instance because we
+      // already ran out of time), otherwise we should continue searching but
+      // switching from pondering to normal search.
+      if (    token == "quit"
+          ||  token == "stop"
+          || (token == "ponderhit" && Search::Signals.stopOnPonderhit))
       {
-          // The GUI sends 'ponderhit' to tell us to ponder on the same move the
-          // opponent has played. In case Signals.stopOnPonderhit is set we are
-          // waiting for 'ponderhit' to stop the search (for instance because we
-          // already ran out of time), otherwise we should continue searching but
-          // switch from pondering to normal search.
-          if (token != "ponderhit" || Search::Signals.stopOnPonderhit)
-          {
-              Search::Signals.stop = true;
-              Threads.main()->notify_one(); // Could be sleeping
-          }
-          else
-              Search::Limits.ponder = false;
+          Search::Signals.stop = true;
+          Threads.main()->notify_one(); // Could be sleeping
       }
+      else if (token == "ponderhit")
+          Search::Limits.ponder = false; // Switch to normal search
+
+      else if (token == "uci")
+          sync_cout << "id name " << engine_info(true)
+                    << "\n"       << Options
+                    << "\nuciok"  << sync_endl;
+
+      else if (token == "ucinewgame")
+      {
+          TT.clear();
+          Time.availableNodes = 0;
+      }
+      else if (token == "isready")    sync_cout << "readyok" << sync_endl;
+      else if (token == "go")         go(pos, is);
+      else if (token == "position")   position(pos, is);
+      else if (token == "setoption")  setoption(is);
+
+      // Additional custom non-UCI commands, useful for debugging
+      else if (token == "flip")       pos.flip();
+      else if (token == "bench")      benchmark(pos, is);
+      else if (token == "d")          sync_cout << pos << sync_endl;
+      else if (token == "eval")       sync_cout << Eval::trace(pos) << sync_endl;
       else if (token == "perft")
       {
           int depth;
@@ -182,48 +201,27 @@ void UCI::loop(int argc, char* argv[]) {
 
           is >> depth;
           ss << Options["Hash"]    << " "
-             << Options["Threads"] << " " << depth << " current " << token;
+             << Options["Threads"] << " " << depth << " current perft";
 
           benchmark(pos, ss);
       }
-      else if (token == "key")
-          sync_cout << hex << uppercase << setfill('0')
-                    << "position key: "   << setw(16) << pos.key()
-                    << "\nmaterial key: " << setw(16) << pos.material_key()
-                    << "\npawn key:     " << setw(16) << pos.pawn_key()
-                    << dec << nouppercase << setfill(' ') << sync_endl;
-
-      else if (token == "uci")
-          sync_cout << "id name " << engine_info(true)
-                    << "\n"       << Options
-                    << "\nuciok"  << sync_endl;
-
-      else if (token == "ucinewgame") TT.clear();
-      else if (token == "go")         go(pos, is);
-      else if (token == "position")   position(pos, is);
-      else if (token == "setoption")  setoption(is);
-      else if (token == "flip")       pos.flip();
-      else if (token == "bench")      benchmark(pos, is);
-      else if (token == "d")          sync_cout << pos << sync_endl;
-      else if (token == "isready")    sync_cout << "readyok" << sync_endl;
-      else if (token == "eval")       sync_cout << Eval::trace(pos) << sync_endl;
       else
           sync_cout << "Unknown command: " << cmd << sync_endl;
 
   } while (token != "quit" && argc == 1); // Passed args have one-shot behaviour
 
-  Threads.wait_for_think_finished(); // Cannot quit whilst the search is running
+  Threads.main()->join(); // Cannot quit whilst the search is running
 }
 
 
-/// format_value() converts a Value to a string suitable for use with the UCI
-/// protocol specifications:
+/// UCI::value() converts a Value to a string suitable for use with the UCI
+/// protocol specification:
 ///
-/// cp <x>     The score from the engine's point of view in centipawns.
-/// mate <y>   Mate in y moves, not plies. If the engine is getting mated
-///            use negative values for y.
+/// cp <x>    The score from the engine's point of view in centipawns.
+/// mate <y>  Mate in y moves, not plies. If the engine is getting mated
+///           use negative values for y.
 
-string UCI::format_value(Value v, Value alpha, Value beta) {
+string UCI::value(Value v) {
 
   stringstream ss;
 
@@ -232,28 +230,23 @@ string UCI::format_value(Value v, Value alpha, Value beta) {
   else
       ss << "mate " << (v > 0 ? VALUE_MATE - v + 1 : -VALUE_MATE - v) / 2;
 
-  ss << (v >= beta ? " lowerbound" : v <= alpha ? " upperbound" : "");
-
   return ss.str();
 }
 
 
-/// format_square() converts a Square to a string (g1, a7, etc.)
+/// UCI::square() converts a Square to a string in algebraic notation (g1, a7, etc.)
 
-std::string UCI::format_square(Square s) {
-
-  char ch[] = { char('a' + file_of(s)),
-                char('1' + rank_of(s)), 0 }; // Zero-terminating
-  return ch;
+std::string UCI::square(Square s) {
+  return std::string{ char('a' + file_of(s)), char('1' + rank_of(s)) };
 }
 
 
-/// format_move() converts a Move to a string in coordinate notation
-/// (g1f3, a7a8q, etc.). The only special case is castling moves, where we print
-/// in the e1g1 notation in normal chess mode, and in e1h1 notation in chess960
-/// mode. Internally castling moves are always encoded as "king captures rook".
+/// UCI::move() converts a Move to a string in coordinate notation (g1f3, a7a8q).
+/// The only special case is castling, where we print in the e1g1 notation in
+/// normal chess mode, and in e1h1 notation in chess960 mode. Internally all
+/// castling moves are always encoded as 'king captures rook'.
 
-string UCI::format_move(Move m, bool chess960) {
+string UCI::move(Move m, bool chess960) {
 
   Square from = from_sq(m);
   Square to = to_sq(m);
@@ -267,7 +260,7 @@ string UCI::format_move(Move m, bool chess960) {
   if (type_of(m) == CASTLING && !chess960)
       to = make_square(to > from ? FILE_G : FILE_C, rank_of(from));
 
-  string move = format_square(from) + format_square(to);
+  string move = UCI::square(from) + UCI::square(to);
 
   if (type_of(m) == PROMOTION)
       move += " pnbrqk"[promotion_type(m)];
@@ -276,17 +269,17 @@ string UCI::format_move(Move m, bool chess960) {
 }
 
 
-/// to_move() takes a position and a string representing a move in
-/// simple coordinate notation and returns an equivalent legal Move if any.
+/// UCI::to_move() converts a string representing a move in coordinate notation
+/// (g1f3, a7a8q) to the corresponding legal Move, if any.
 
 Move UCI::to_move(const Position& pos, string& str) {
 
   if (str.length() == 5) // Junior could send promotion piece in uppercase
       str[4] = char(tolower(str[4]));
 
-  for (MoveList<LEGAL> it(pos); *it; ++it)
-      if (str == format_move(*it, pos.is_chess960()))
-          return *it;
+  for (const auto& m : MoveList<LEGAL>(pos))
+      if (str == UCI::move(m, pos.is_chess960()))
+          return m;
 
   return MOVE_NONE;
 }
