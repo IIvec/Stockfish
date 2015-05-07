@@ -52,7 +52,7 @@ namespace {
   // pick_best() finds the best move in the range (begin, end) and moves it to
   // the front. It's faster than sorting all the moves in advance when there
   // are few moves e.g. the possible captures.
-  inline Move pick_best(ExtMove* begin, ExtMove* end)
+  Move pick_best(ExtMove* begin, ExtMove* end)
   {
       std::swap(*begin, *std::max_element(begin, end));
       return *begin;
@@ -134,10 +134,10 @@ MovePicker::MovePicker(const Position& p, Move ttm, const HistoryStats& h, const
 /// highest values will be picked first.
 template<>
 void MovePicker::score<CAPTURES>() {
-  // Winning and equal captures in the main search are ordered by MVV/LVA.
+  // Winning and equal captures in the main search are ordered by MVV.
   // Suprisingly, this appears to perform slightly better than SEE based
   // move ordering. The reason is probably that in a position with a winning
-  // capture, capturing a more valuable (but sufficiently defended) piece
+  // capture, capturing a valuable (but sufficiently defended) piece
   // first usually doesn't hurt. The opponent will have to recapture, and
   // the hanging piece will still be hanging (except in the unusual cases
   // where it is possible to recapture with the hanging piece). Exchanging
@@ -148,15 +148,8 @@ void MovePicker::score<CAPTURES>() {
   // has been picked up in pick_move_from_list(). This way we save some SEE
   // calls in case we get a cutoff.
   for (auto& m : *this)
-      if (type_of(m) == ENPASSANT)
-          m.value = PieceValue[MG][PAWN] - Value(PAWN);
-
-      else if (type_of(m) == PROMOTION)
-          m.value =  PieceValue[MG][pos.piece_on(to_sq(m))] - Value(PAWN)
-                   + PieceValue[MG][promotion_type(m)] - PieceValue[MG][PAWN];
-      else
-          m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
-                   - Value(type_of(pos.moved_piece(m)));
+      m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
+               - 200 * relative_rank(pos.side_to_move(), to_sq(m));
 }
 
 template<>
@@ -167,7 +160,7 @@ void MovePicker::score<QUIETS>() {
 
   for (auto& m : *this)
       m.value =  history[pos.moved_piece(m)][to_sq(m)]
-               + cmh[pos.moved_piece(m)][to_sq(m)];
+               + cmh[pos.moved_piece(m)][to_sq(m)] * 3;
 }
 
 template<>
