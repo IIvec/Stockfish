@@ -22,6 +22,7 @@
 #include <ostream>
 
 #include "misc.h"
+#include "position.h"
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
@@ -31,7 +32,40 @@ using std::string;
 
 UCI::OptionsMap Options; // Global object
 
+Value PawnValueMg, PawnValueEg;
+Value KnightValueMg, KnightValueEg;
+Value BishopValueMg, BishopValueEg;
+Value RookValueMg, RookValueEg;
+Value QueenValueMg, QueenValueEg;
+Value MidgameLimit, EndgameLimit;
+
 namespace UCI {
+
+void on_eval(const Option&) {
+  PawnValueMg   = Value(int(Options["pvmg"]));
+  PawnValueEg   = Value(int(Options["pveg"]));
+  KnightValueMg = Value(int(Options["kvmg"]));
+  KnightValueEg = Value(int(Options["kveg"]));
+  BishopValueMg = Value(int(Options["bvmg"]));
+  BishopValueEg = Value(int(Options["bveg"]));
+  RookValueMg   = Value(int(Options["rvmg"]));
+  RookValueEg   = Value(int(Options["rveg"]));
+  QueenValueMg  = Value(int(Options["qvmg"]));
+  QueenValueEg  = Value(int(Options["qveg"]));
+  MidgameLimit  = Value(int(Options["mglimit"]));
+  EndgameLimit  = Value(int(Options["eglimit"]));
+
+  PieceValue[MG][PAWN] = PawnValueMg;
+  PieceValue[EG][PAWN] = PawnValueEg;
+  PieceValue[MG][KNIGHT] = KnightValueMg;
+  PieceValue[EG][KNIGHT] = KnightValueEg;
+  PieceValue[MG][BISHOP] = BishopValueMg;
+  PieceValue[EG][BISHOP] = BishopValueEg;
+  PieceValue[MG][ROOK] = RookValueMg;
+  PieceValue[EG][ROOK] = RookValueEg;
+  PieceValue[MG][QUEEN] = QueenValueMg;
+  PieceValue[EG][QUEEN] = QueenValueEg;
+}
 
 /// 'On change' actions, triggered by an option's value change
 void on_clear_hash(const Option&) { TT.clear(); }
@@ -73,6 +107,21 @@ void init(OptionsMap& o) {
   o["SyzygyProbeDepth"]      << Option(1, 1, 100);
   o["Syzygy50MoveRule"]      << Option(true);
   o["SyzygyProbeLimit"]      << Option(6, 0, 6);
+  // SPSA
+  o["pvmg"]                  << Option(198, 0, 500, on_eval);
+  o["pveg"]                  << Option(258, 0, 500, on_eval);
+  o["kvmg"]                  << Option(817, 0, 2000, on_eval);
+  o["kveg"]                  << Option(846, 0, 2000, on_eval);
+  o["bvmg"]                  << Option(836, 0, 2000, on_eval);
+  o["bveg"]                  << Option(857, 0, 2000, on_eval);
+  o["rvmg"]                  << Option(1270, 0, 3000, on_eval);
+  o["rveg"]                  << Option(1278, 0, 3000, on_eval);
+  o["qvmg"]                  << Option(2521, 0, 5000, on_eval);
+  o["qveg"]                  << Option(2558, 0, 5000, on_eval);
+  o["mglimit"]               << Option(15581, 8000, 25000, on_eval);
+  o["eglimit"]               << Option(3998, 0, 10000, on_eval);
+
+  on_eval(o["eglimit"]);
 }
 
 
