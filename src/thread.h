@@ -20,7 +20,11 @@
 #ifndef THREAD_H_INCLUDED
 #define THREAD_H_INCLUDED
 
+#include <atomic>
 #include <bitset>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 #include "material.h"
@@ -28,38 +32,26 @@
 #include "pawns.h"
 #include "position.h"
 #include "search.h"
+#include "thread_win32.h"
 
 struct Thread;
 
-const int MAX_THREADS = 128;
-const int MAX_SPLITPOINTS_PER_THREAD = 8;
+const size_t MAX_THREADS = 128;
+const size_t MAX_SPLITPOINTS_PER_THREAD = 8;
+const size_t MAX_SLAVES_PER_SPLITPOINT = 4;
 
-/// Mutex and ConditionVariable struct are wrappers of the low level locking
-/// machinery and are modeled after the corresponding C++11 classes.
+class Spinlock {
 
-struct Mutex {
-  Mutex() { lock_init(l); }
- ~Mutex() { lock_destroy(l); }
+  std::atomic_int lock;
 
-  void lock() { lock_grab(l); }
-  void unlock() { lock_release(l); }
-
-private:
-  friend struct ConditionVariable;
-
-  Lock l;
-};
-
-struct ConditionVariable {
-  ConditionVariable() { cond_init(c); }
- ~ConditionVariable() { cond_destroy(c); }
-
-  void wait(Mutex& m) { cond_wait(c, m.l); }
-  void wait_for(Mutex& m, int ms) { timed_wait(c, m.l, ms); }
-  void notify_one() { cond_signal(c); }
-
-private:
-  WaitCondition c;
+public:
+  Spinlock() { lock = 1; } // Init here to workaround a bug with MSVC 2013
+  void acquire() {
+      while (lock.fetch_sub(1, std::memory_order_acquire) != 1)
+          while (lock.load(std::memory_order_relaxed) <= 0)
+              std::this_thread::yield(); // Be nice to hyperthreading
+  }
+  void release() { lock.store(1, std::memory_order_release); }
 };
 
 
@@ -71,7 +63,7 @@ struct SplitPoint {
   // Const data after split point has been setup
   const Position* pos;
   Search::Stack* ss;
-  Thread* masterThread;
+  Thread* master;
   Depth depth;
   Value beta;
   int nodeType;
@@ -82,7 +74,7 @@ struct SplitPoint {
   SplitPoint* parentSplitPoint;
 
   // Shared variable data
-  Mutex mutex;
+  Spinlock spinlock;
   std::bitset<MAX_THREADS> slavesMask;
   volatile bool allSlavesSearching;
   volatile uint64_t nodes;
@@ -97,18 +89,17 @@ struct SplitPoint {
 /// ThreadBase struct is the base of the hierarchy from where we derive all the
 /// specialized thread classes.
 
-struct ThreadBase {
+struct ThreadBase : public std::thread {
 
-  ThreadBase() : handle(NativeHandle()), exit(false) {}
-  virtual ~ThreadBase() {}
+  virtual ~ThreadBase() = default;
   virtual void idle_loop() = 0;
   void notify_one();
   void wait_for(volatile const bool& b);
 
   Mutex mutex;
+  Spinlock spinlock;
   ConditionVariable sleepCondition;
-  NativeHandle handle;
-  volatile bool exit;
+  volatile bool exit = false;
 };
 
 
@@ -122,7 +113,7 @@ struct Thread : public ThreadBase {
   Thread();
   virtual void idle_loop();
   bool cutoff_occurred() const;
-  bool available_to(const Thread* master) const;
+  bool can_join(const SplitPoint* sp) const;
 
   void split(Position& pos, Search::Stack* ss, Value alpha, Value beta, Value* bestValue, Move* bestMove,
              Depth depth, int moveCount, MovePicker* movePicker, int nodeType, bool cutNode);
@@ -135,7 +126,7 @@ struct Thread : public ThreadBase {
   size_t idx;
   int maxPly;
   SplitPoint* volatile activeSplitPoint;
-  volatile int splitPointsSize;
+  volatile size_t splitPointsSize;
   volatile bool searching;
 };
 
@@ -144,19 +135,18 @@ struct Thread : public ThreadBase {
 /// special threads: the main one and the recurring timer.
 
 struct MainThread : public Thread {
-  MainThread() : thinking(true) {} // Avoid a race with start_thinking()
   virtual void idle_loop();
-  volatile bool thinking;
+  void join();
+  volatile bool thinking = true; // Avoid a race with start_thinking()
 };
 
 struct TimerThread : public ThreadBase {
 
   static const int Resolution = 5; // Millisec between two check_time() calls
 
-  TimerThread() : run(false) {}
   virtual void idle_loop();
 
-  bool run;
+  bool run = false;
 };
 
 
@@ -171,13 +161,10 @@ struct ThreadPool : public std::vector<Thread*> {
 
   MainThread* main() { return static_cast<MainThread*>(at(0)); }
   void read_uci_options();
-  Thread* available_slave(const Thread* master) const;
-  void wait_for_think_finished();
+  Thread* available_slave(const SplitPoint* sp) const;
   void start_thinking(const Position&, const Search::LimitsType&, Search::StateStackPtr&);
 
   Depth minimumSplitDepth;
-  Mutex mutex;
-  ConditionVariable sleepCondition;
   TimerThread* timer;
 };
 
