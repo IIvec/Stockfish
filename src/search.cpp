@@ -376,7 +376,7 @@ void Thread::search(bool isMainThread) {
   {
       // Set up the new depth for the helper threads
       if (!isMainThread)
-          rootDepth = Threads.main()->rootDepth + Depth(int(3 * log(1 + this->idx)));
+          rootDepth = Threads.main()->rootDepth + Depth(int(2.2 * log(1 + this->idx)));
 
       // Age out PV variability metric
       if (isMainThread)
@@ -539,12 +539,7 @@ void Thread::search(bool isMainThread) {
 
 namespace {
 
-  // search<>() is the main search function for both PV and non-PV nodes and for
-  // normal and SplitPoint nodes. When called just after a split point the search
-  // is simpler because we have already probed the hash table, done a null move
-  // search, and searched the first move before splitting, so we don't have to
-  // repeat all this work again. We also don't need to store anything to the hash
-  // table here: This is taken care of after we return from the split point.
+  // search<>() is the main search function for both PV and non-PV nodes
 
   template <NodeType NT>
   Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, bool cutNode) {
