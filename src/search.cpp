@@ -541,10 +541,11 @@ void Thread::search() {
               // Stop the search if only one legal move is available, or if all
               // of the available time has been used, or if we matched an easyMove
               // from the previous search and just did a fast verification.
-              const int F[] = { mainThread->failedLow,
-                                bestValue - mainThread->previousScore };
+              int scoreDiff = mainThread->previousScore - bestValue;
 
-              int improvingFactor = std::max(229, std::min(715, 357 + 119 * F[0] - 6 * F[1]));
+              int improvingFactor = mainThread->failedLow
+                                    ? 476 + int(140 * atan(scoreDiff / 12.0))
+                                    : 357 + int(115 * atan(scoreDiff / 13.0));
               double unstablePvFactor = 1 + mainThread->bestMoveChanges;
 
               bool doEasyMove =   rootMoves[0].pv[0] == easyMove
