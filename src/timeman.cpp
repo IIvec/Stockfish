@@ -46,7 +46,7 @@ namespace {
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * corr;
     }
     
-    double ratio = std::min(1.0, TRatio * (1.0 + (60.0 + 30.0 * atan(hply / 20.0)) * myInc / (myTime * corr)));
+    double ratio = std::min(1.0, TRatio * (1.0 + std::max(52.4, 50.321 + 2.1968 * hply - 0.0335 * hply * hply) * myInc / (myTime * corr)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
     return int(hypMyTime * ratio); // Intel C++ asks for an explicit cast
