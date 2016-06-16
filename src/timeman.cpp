@@ -39,14 +39,14 @@ namespace {
     int hply = (ply + 1) / 2;
 
     if (movesToGo)
-        TRatio = (T == OptimumTime ? 0.7185 : 4.529) * (1.0 + 0.02688 * movesToGo - 0.0005566 * movesToGo * movesToGo) / movesToGo;
+        TRatio = (T == OptimumTime ? 0.9732 : 6.1345) * exp(-(movesToGo - 20) * (movesToGo - 20) / 1500.0) / movesToGo;
     else
     {
         corr = 1.0 + 15.0 * hply / (500.0 + hply);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * corr;
     }
     
-    double ratio = std::min(1.0, TRatio * (1.0 + std::max(52.4, 50.321 + 2.1968 * hply - 0.0335 * hply * hply) * myInc / (myTime * corr)));
+    double ratio = std::min(1.0, TRatio * (1.0 + std::max(52.4, 50.321 + 3.6 * hply - 0.055 * hply * hply) * myInc / (myTime * corr)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
     return int(hypMyTime * ratio); // Intel C++ asks for an explicit cast
