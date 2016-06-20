@@ -32,21 +32,32 @@ namespace {
 
   enum TimeType { OptimumTime, MaxTime };
 
+  double gauss(int x, double a, double b)
+  {
+      return exp(-(x - a) * (x - a) / b);
+  }
+
   template<TimeType T>
   int remaining(int myTime, int myInc, int moveOverhead, int ply, int movesToGo)
   {
-    double TRatio, corr = 2.0;
+    double TRatio, sd = 8.5;
     int hply = (ply + 1) / 2;
 
+    /// In movestogo case we distribute time according to normal distribution with the maximum around move 17.
+ 
     if (movesToGo)
-        TRatio = (T == OptimumTime ? 0.9732 : 6.1345) * exp(-(movesToGo - 20) * (movesToGo - 20) / 1500.0) / movesToGo;
+        TRatio = (T == OptimumTime ? 0.9764 : 6.1549) * gauss(movesToGo, 23.0, 1500.0) / movesToGo;
     else
     {
-        corr = 1.0 + 15.0 * hply / (500.0 + hply);
-        TRatio = (T == OptimumTime ? 0.016 : 0.085) * corr;
+        /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
+
+        sd = 1.0 + 15.0 * hply / (500.0 + hply);
+        TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
-    double ratio = std::min(1.0, TRatio * (1.0 + std::max(52.4, 50.321 + 3.6 * hply - 0.055 * hply * hply) * myInc / (myTime * corr)));
+    /// We distribute usage of increment according to normal distribution with the maximum around move 32.
+
+    double ratio = std::min(1.0, TRatio * (1.0 + (52.0 + 70.0 * gauss(hply, 32.0, 500.0)) * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
     return int(hypMyTime * ratio); // Intel C++ asks for an explicit cast
