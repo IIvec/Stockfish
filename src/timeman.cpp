@@ -46,7 +46,7 @@ namespace {
     /// In movestogo case we distribute time according to normal distribution with the maximum around move 17.
  
     if (movesToGo)
-        TRatio = (T == OptimumTime ? 0.9764 : 6.1549) * gauss(movesToGo, 23.0, 1500.0) / movesToGo;
+        TRatio = (T == OptimumTime ? 0.9588 : 6.044) * gauss(movesToGo, 23.0, 1900.0) / movesToGo;
     else
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
