@@ -55,9 +55,9 @@ namespace {
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
-    /// We distribute usage of increment according to normal distribution with the maximum around move 32.
+    /// We distribute usage of increment according to normal distribution with the maximum around move 46.
 
-    double ratio = std::min(1.0, TRatio * (1.0 + (52.0 + 70.0 * gauss(hply, 32.0, 500.0)) * myInc / (myTime * sd)));
+    double ratio = std::min(1.0, TRatio * (1.0 + (44.8 + 54.3 * gauss(hply, 46.3, 428.5)) * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
     return int(hypMyTime * ratio); // Intel C++ asks for an explicit cast
