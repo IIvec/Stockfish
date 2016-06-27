@@ -38,10 +38,14 @@ namespace {
   }
 
   template<TimeType T>
-  int remaining(int myTime, int myInc, int moveOverhead, int ply, int movesToGo)
+  int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply, Value eval, Value npm)
   {
     double TRatio, sd = 8.5;
-    int hply = (ply + 1) / 2;
+    Value inpm = 4 * (KnightValueMg + BishopValueMg + RookValueMg) + 2 * QueenValueMg; // initial non_pawn_material
+    npm = std::min(npm, inpm);
+
+    int hply = (ply + 1) / 2; // current move number for any side
+    int thply = int(hply + 0.0 * sqrt(abs(eval)) + 0.0 * sqrt(log(double(inpm) / npm))); // theoretical move number used for the purpose of time management
 
     /// In movestogo case we distribute time according to normal distribution with the maximum around move 17.
  
@@ -51,13 +55,13 @@ namespace {
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
 
-        sd = 1.0 + 15.0 * hply / (500.0 + hply);
+        sd = 1.0 + 15.0 * thply / (500.0 + thply);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
-    /// We distribute usage of increment according to normal distribution with the maximum around move 46.
+    /// We distribute usage of increment according to normal distribution with the maximum around theoretical move 46.
 
-    double ratio = std::min(1.0, TRatio * (1.0 + (44.8 + 54.3 * gauss(hply, 46.3, 428.5)) * myInc / (myTime * sd)));
+    double ratio = std::min(1.0, TRatio * (1.0 + (44.8 + 54.3 * gauss(thply, 46.3, 428.5)) * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
     return int(hypMyTime * ratio); // Intel C++ asks for an explicit cast
@@ -75,7 +79,7 @@ namespace {
 ///  inc >  0 && movestogo == 0 means: x basetime + z increment
 ///  inc >  0 && movestogo != 0 means: x moves in y minutes + z increment
 
-void TimeManagement::init(Search::LimitsType& limits, Color us, int ply)
+void TimeManagement::init(Search::LimitsType& limits, Color us, int ply, Value eval, Value npm)
 {
   int moveOverhead    = Options["Move Overhead"];
   int npmsec          = Options["nodestime"];
@@ -97,8 +101,8 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply)
 
   startTime = limits.startTime;
 
-      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, ply, limits.movestogo);
-      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, ply, limits.movestogo);
+      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval, npm);
+      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval, npm);
 
   if (Options["Ponder"])
       optimumTime += optimumTime / 4;

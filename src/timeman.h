@@ -24,13 +24,14 @@
 #include "misc.h"
 #include "search.h"
 #include "thread.h"
+#include "types.h"
 
 /// The TimeManagement class computes the optimal time to think depending on
 /// the maximum available time, the game move number and other parameters.
 
 class TimeManagement {
 public:
-  void init(Search::LimitsType& limits, Color us, int ply);
+  void init(Search::LimitsType& limits, Color us, int ply, Value eval, Value npm);
   int optimum() const { return optimumTime; }
   int maximum() const { return maximumTime; }
   int elapsed() const { return int(Search::Limits.npmsec ? Threads.nodes_searched() : now() - startTime); }
