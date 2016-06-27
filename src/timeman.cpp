@@ -45,7 +45,7 @@ namespace {
     npm = std::min(npm, inpm);
 
     int hply = (ply + 1) / 2; // current move number for any side
-    int thply = int(hply + 0.0 * sqrt(abs(eval)) + 0.0 * sqrt(log(double(inpm) / npm))); // theoretical move number used for the purpose of time management
+    int thply = std::round(hply + 0.0 * sqrt(abs(eval)) + 0.0 * sqrt(log(double(inpm) / npm))); // theoretical move number used for the purpose of time management
 
     /// In movestogo case we distribute time according to normal distribution with the maximum around move 17.
  
