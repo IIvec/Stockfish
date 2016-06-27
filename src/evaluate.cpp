@@ -577,6 +577,7 @@ namespace {
         Square s = pop_lsb(&b);
 
         assert(pos.pawn_passed(Us, s));
+        assert(!(pos.pieces(PAWN) & forward_bb(Us, s)));
 
         int r = relative_rank(Us, s) - RANK_2;
         int rr = r * (r - 1);
@@ -722,7 +723,7 @@ namespace {
             // Endgame with opposite-colored bishops, but also other pieces. Still
             // a bit drawish, but not as drawish as with only the two bishops.
             else
-                sf = ScaleFactor(46 * sf / SCALE_FACTOR_NORMAL);
+                sf = ScaleFactor(46);
         }
         // Endings where weaker side can place his king in front of the opponent's
         // pawns are drawish.
