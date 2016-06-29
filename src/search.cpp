@@ -337,9 +337,11 @@ void MainThread::search() {
 void Thread::search() {
 
   Stack stack[MAX_PLY+7], *ss = stack+5; // To allow referencing (ss-5) and (ss+2)
-  Value bestValue, alpha, beta, delta;
+  Value bestValue, alpha, beta, delta, deltaChange = Value(0);
   Move easyMove = MOVE_NONE;
   MainThread* mainThread = (this == Threads.main() ? Threads.main() : nullptr);
+  int lastNodesSearched = 0;
+  double branchingFactor = 1;
 
   std::memset(ss-5, 0, 8 * sizeof(Stack));
 
@@ -393,7 +395,7 @@ void Thread::search() {
           // Reset aspiration window starting size
           if (rootDepth >= 5 * ONE_PLY)
           {
-              delta = Value(18);
+              delta = Value(18) + deltaChange;
               alpha = std::max(rootMoves[PVIdx].previousScore - delta,-VALUE_INFINITE);
               beta  = std::min(rootMoves[PVIdx].previousScore + delta, VALUE_INFINITE);
           }
@@ -404,6 +406,14 @@ void Thread::search() {
           while (true)
           {
               bestValue = ::search<PV>(rootPos, ss, alpha, beta, rootDepth, false);
+
+              // Update branching factor
+              if (lastNodesSearched){
+                  double b = double(Threads.nodes_searched())/double(lastNodesSearched);
+                  b<branchingFactor? deltaChange += Value(1): deltaChange -= Value(1);
+                  branchingFactor = b;
+              }
+              lastNodesSearched = Threads.nodes_searched();
 
               // Bring the best move to the front. It is critical that sorting
               // is done with a stable algorithm because all the values but the
