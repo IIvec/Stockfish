@@ -410,7 +410,7 @@ void Thread::search() {
               // Update branching factor
               if (lastNodesSearched){
                   double b = double(Threads.nodes_searched())/double(lastNodesSearched);
-                  b<branchingFactor? deltaChange += Value(1): deltaChange -= Value(1);
+                  b<branchingFactor? deltaChange -= Value(1): deltaChange += Value(1);
                   branchingFactor = b;
               }
               lastNodesSearched = Threads.nodes_searched();
