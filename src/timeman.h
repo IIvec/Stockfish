@@ -24,7 +24,6 @@
 #include "misc.h"
 #include "search.h"
 #include "thread.h"
-#include "types.h"
 
 /// The TimeManagement class computes the optimal time to think depending on
 /// the maximum available time, the game move number and other parameters.
