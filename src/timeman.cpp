@@ -38,16 +38,15 @@ namespace {
   }
 
   template<TimeType T>
-  int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply, Value eval, Value npm)
+  int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply, Value eval)
   {
     double TRatio, sd = 8.5;
-    Value inpm = 4 * (KnightValueMg + BishopValueMg + RookValueMg) + 2 * QueenValueMg; // initial non_pawn_material
-    npm = std::min(npm, inpm);
 
-    int hply = (ply + 1) / 2; // current move number for any side
-    int thply = std::round(hply + 0.0 * sqrt(abs(eval)) + 0.0 * sqrt(log(double(inpm) / npm))); // theoretical move number used for the purpose of time management
+    int mn = (ply + 1) / 2; // current move number for any side
+    double evalDependence = 0.4 * sqrt(abs(eval));
+    int tmn = std::max(1, int(std::round(mn - evalDependence))); // theoretical move number used for the purpose of time management
 
-    /// In movestogo case we distribute time according to normal distribution with the maximum around move 17.
+    /// In movestogo case we distribute time according to normal distribution with the maximum around move 17 for 40 moves in y minutes case.
  
     if (movesToGo)
         TRatio = (T == OptimumTime ? 0.9588 : 6.044) * gauss(movesToGo, 23.0, 1900.0) / movesToGo;
@@ -55,13 +54,14 @@ namespace {
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
 
-        sd = 1.0 + 15.0 * thply / (500.0 + thply);
+        sd = 1.0 + 33.0 * tmn / (500.0 + tmn);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
-    /// We distribute usage of increment according to normal distribution with the maximum around theoretical move 46.
-
-    double ratio = std::min(1.0, TRatio * (1.0 + (44.8 + 54.3 * gauss(thply, 46.3, 428.5)) * myInc / (myTime * sd)));
+    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around theoretical move 46.
+    
+    double incUsage = 44.8 + 54.3 * gauss(tmn, 46.3, 428.5);
+    double ratio = std::min(1.0, TRatio * (1.0 + incUsage * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
     return int(hypMyTime * ratio); // Intel C++ asks for an explicit cast
@@ -79,7 +79,7 @@ namespace {
 ///  inc >  0 && movestogo == 0 means: x basetime + z increment
 ///  inc >  0 && movestogo != 0 means: x moves in y minutes + z increment
 
-void TimeManagement::init(Search::LimitsType& limits, Color us, int ply, Value eval, Value npm)
+void TimeManagement::init(Search::LimitsType& limits, Color us, int ply, Value eval)
 {
   int moveOverhead    = Options["Move Overhead"];
   int npmsec          = Options["nodestime"];
@@ -101,8 +101,8 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply, Value e
 
   startTime = limits.startTime;
 
-      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval, npm);
-      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval, npm);
+      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval);
+      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval);
 
   if (Options["Ponder"])
       optimumTime += optimumTime / 4;

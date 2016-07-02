@@ -31,7 +31,7 @@
 
 class TimeManagement {
 public:
-  void init(Search::LimitsType& limits, Color us, int ply, Value eval, Value npm);
+  void init(Search::LimitsType& limits, Color us, int ply, Value eval);
   int optimum() const { return optimumTime; }
   int maximum() const { return maximumTime; }
   int elapsed() const { return int(Search::Limits.npmsec ? Threads.nodes_searched() : now() - startTime); }
