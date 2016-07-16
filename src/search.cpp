@@ -391,9 +391,10 @@ void Thread::search() {
       for (PVIdx = 0; PVIdx < multiPV && !Signals.stop; ++PVIdx)
       {
           // Reset aspiration window starting size
-          if (rootDepth >= 5 * ONE_PLY)
+          if (rootDepth >= 2 * ONE_PLY)
           {
-              delta = Value(18);
+              Value prevScore = Threads.main()->previousScore;
+              delta = Value(int((30.0 + 0.05 * abs(prevScore)) * pow(rootDepth / ONE_PLY, -0.25)));
               alpha = std::max(rootMoves[PVIdx].previousScore - delta,-VALUE_INFINITE);
               beta  = std::min(rootMoves[PVIdx].previousScore + delta, VALUE_INFINITE);
           }
