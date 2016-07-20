@@ -43,18 +43,18 @@ namespace {
     double TRatio, sd = 8.5;
 
     int mn = (ply + 1) / 2; // current move number for any side
-    double evalDependence = 1.2 * log(1.0 + abs(eval));
+    double evalDependence = 1.35 * log(1.0 + abs(eval));
     int tmn = std::max(1, int(std::round(mn - evalDependence))); // theoretical move number used for the purpose of time management
 
     /// In movestogo case we distribute time according to normal distribution with the maximum around move 17 for 40 moves in y minutes case.
  
     if (movesToGo)
-        TRatio = (T == OptimumTime ? 0.9588 : 6.044) * gauss(movesToGo, 23.0, 1900.0) / movesToGo;
+        TRatio = (T == OptimumTime ? 0.987 : 6.22) * gauss(movesToGo, 25.0, 2000.0) / movesToGo;
     else
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
 
-        sd = 1.0 + 28.0 * tmn / (500.0 + tmn);
+        sd = 1.0 + 25.0 * tmn / (500.0 + tmn);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
