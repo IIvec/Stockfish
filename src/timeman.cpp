@@ -52,7 +52,7 @@ namespace {
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
 
-        sd = 1.0 + 15.0 * tmn / (500.0 + mn);
+        sd = 1.0 + 15.0 * mn / (500.0 + mn);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
