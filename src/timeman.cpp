@@ -38,13 +38,11 @@ namespace {
   }
 
   template<TimeType T>
-  int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply, Value eval)
+  int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply)
   {
     double TRatio, sd = 8.5;
 
     int mn = (ply + 1) / 2; // current move number for any side
-    double evalDependence = 1.35 * log(1.0 + abs(eval));
-    int tmn = std::max(1, int(std::round(mn - evalDependence))); // theoretical move number used for the purpose of time management
 
     /// In movestogo case we distribute time according to normal distribution with the maximum around move 17 for 40 moves in y minutes case.
  
@@ -54,13 +52,13 @@ namespace {
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
 
-        sd = 1.0 + 25.0 * tmn / (500.0 + tmn);
+        sd = 1.0 + 15.0 * tmn / (500.0 + mn);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
     /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around theoretical move 25.
     
-    double incUsage = 40.0 + 40.0 * gauss(tmn, 25.0, 500.0);
+    double incUsage = 40.0 + 40.0 * gauss(mn, 25.0, 500.0);
     double ratio = std::min(1.0, TRatio * (1.0 + incUsage * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
@@ -79,7 +77,7 @@ namespace {
 ///  inc >  0 && movestogo == 0 means: x basetime + z increment
 ///  inc >  0 && movestogo != 0 means: x moves in y minutes + z increment
 
-void TimeManagement::init(Search::LimitsType& limits, Color us, int ply, Value eval)
+void TimeManagement::init(Search::LimitsType& limits, Color us, int ply)
 {
   int moveOverhead    = Options["Move Overhead"];
   int npmsec          = Options["nodestime"];
@@ -101,8 +99,8 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply, Value e
 
   startTime = limits.startTime;
 
-      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval);
-      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, eval);
+      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply);
+      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply);
 
   if (Options["Ponder"])
       optimumTime += optimumTime / 4;

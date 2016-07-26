@@ -255,9 +255,7 @@ template uint64_t Search::perft<true>(Position&, Depth);
 void MainThread::search() {
 
   Color us = rootPos.side_to_move();
-  int rootPly = rootPos.game_ply();
-  Value prevScore = Threads.main()->previousScore;
-  Time.init(Limits, us, rootPly, prevScore);
+  Time.init(Limits, us, rootPos.game_ply());
 
   int contempt = Options["Contempt"] * PawnValueEg / 100; // From centipawns
   DrawValue[ us] = VALUE_DRAW - Value(contempt);
