@@ -52,13 +52,13 @@ namespace {
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
 
-        sd = 1.0 + 15.0 * mn / (500.0 + mn);
+        sd = 1.0 + 13.5 * mn / (500.0 + mn);
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
-    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around theoretical move 25.
+    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around theoretical move 17.
     
-    double incUsage = 40.0 + 40.0 * gauss(mn, 25.0, 500.0);
+    double incUsage = 50.0 + 30.0 * gauss(mn, 17.0, 450.0);
     double ratio = std::min(1.0, TRatio * (1.0 + incUsage * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
