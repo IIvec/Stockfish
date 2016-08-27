@@ -359,7 +359,7 @@ namespace {
         if (Pt == QUEEN)
         {
             // Penalty if any relative pin or discovered attack against the queen
-            if (pos.slider_blockers(pos.pieces(), pos.pieces(Them, ROOK, BISHOP), s))
+            if (pos.slider_blockers(pos.pieces(Them, ROOK, BISHOP), s))
                 score -= WeakQueen;
         }
     }
@@ -481,8 +481,8 @@ namespace {
   // evaluate_threats() assigns bonuses according to the types of the attacking
   // and the attacked pieces.
 
-  const Bitboard WhiteCamp = Rank4BB | Rank5BB | Rank6BB | Rank7BB | Rank8BB;
-  const Bitboard BlackCamp = Rank5BB | Rank4BB | Rank3BB | Rank2BB | Rank1BB;
+  const Bitboard WhiteCamp = Rank1BB | Rank2BB | Rank3BB | Rank4BB | Rank5BB;
+  const Bitboard BlackCamp = Rank8BB | Rank7BB | Rank6BB | Rank5BB | Rank4BB;
   const Bitboard QueenSide   = FileABB | FileBBB | FileCBB | FileDBB;
   const Bitboard CenterFiles = FileCBB | FileDBB | FileEBB | FileFBB;
   const Bitboard KingSide    = FileEBB | FileFBB | FileGBB | FileHBB;
@@ -572,7 +572,7 @@ namespace {
     score += ThreatByPawnPush * popcount(b);
 
     // King tropism: firstly, find squares that we attack in the enemy king flank
-    b = ei.attackedBy[Us][ALL_PIECES] & KingFlank[Us][file_of(pos.square<KING>(Them))];
+    b = ei.attackedBy[Us][ALL_PIECES] & KingFlank[Them][file_of(pos.square<KING>(Them))];
 
     // Secondly, add to the bitboard the squares which we attack twice in that flank
     // but which are not protected by a enemy pawn. Note the trick to shift away the
@@ -703,9 +703,10 @@ namespace {
 
     // ...count safe + (behind & safe) with a single popcount
     int bonus = popcount((Us == WHITE ? safe << 32 : safe >> 32) | (behind & safe));
+    bonus = std::min(16, bonus);
     int weight = pos.count<ALL_PIECES>(Us);
 
-    return make_score(bonus * weight * weight  / 22, 0);
+    return make_score(bonus * weight * weight / 22, 0);
   }
 
 
@@ -757,9 +758,9 @@ namespace {
         // Endings where weaker side can place his king in front of the opponent's
         // pawns are drawish.
         else if (    abs(eg) <= BishopValueEg
-                 &&  ei.pi->pawn_span(strongSide) <= 1
+                 &&  pos.count<PAWN>(strongSide) <= 2
                  && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
-            sf = ei.pi->pawn_span(strongSide) ? ScaleFactor(51) : ScaleFactor(37);
+            sf = ScaleFactor(37 + 7 * pos.count<PAWN>(strongSide));
     }
 
     return sf;
