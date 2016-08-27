@@ -25,7 +25,7 @@
 UNAME = $(shell uname)
 
 ### Executable name
-EXE = stockfish
+EXE = crochess
 
 ### Installation dir definitions
 PREFIX = /usr/local
