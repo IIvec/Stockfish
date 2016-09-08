@@ -205,6 +205,9 @@ enum Piece {
   PIECE_NB = 16
 };
 
+const Piece Pieces[] = { W_PAWN, W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING,
+                         B_PAWN, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING };
+
 enum Depth {
 
   ONE_PLY = 1,
@@ -329,11 +332,15 @@ inline Score operator/(Score s, int i) {
 extern Value PieceValue[PHASE_NB][PIECE_NB];
 
 inline Color operator~(Color c) {
-  return Color(c ^ BLACK);
+  return Color(c ^ BLACK); // Toggle color
 }
 
 inline Square operator~(Square s) {
   return Square(s ^ SQ_A8); // Vertical flip SQ_A1 -> SQ_A8
+}
+
+inline Piece operator~(Piece pc) {
+  return Piece(pc ^ 8); // Swap color of piece B_KNIGHT -> W_KNIGHT
 }
 
 inline CastlingRight operator|(Color c, CastlingSide s) {
@@ -353,7 +360,7 @@ inline Square make_square(File f, Rank r) {
 }
 
 inline Piece make_piece(Color c, PieceType pt) {
-  return Piece((c << 3) | pt);
+  return Piece((c << 3) + pt);
 }
 
 inline PieceType type_of(Piece pc) {
