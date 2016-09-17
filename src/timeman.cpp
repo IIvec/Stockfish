@@ -44,10 +44,14 @@ namespace {
 
     int mn = (ply + 1) / 2; // current move number for any side
 
-    /// In movestogo case we distribute time according to normal distribution with the maximum around move 17 for 40 moves in y minutes case.
+    /// In movestogo case we distribute time according to normal distribution with the maximum around move 22 for 40 moves in y minutes case.
  
     if (movesToGo)
-        TRatio = (T == OptimumTime ? 0.959 : 6.044) * gauss(movesToGo, 23.0, 1900.0) / movesToGo;
+    {
+        TRatio = (T == OptimumTime ? 0.957 : 6.033) / movesToGo;
+        if (mn <= 40)
+            TRatio *= gauss(movesToGo, 19.0, 1900.0);
+    }
     else
     {
         /// In sudden death case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
@@ -56,7 +60,7 @@ namespace {
         TRatio = (T == OptimumTime ? 0.016 : 0.085) * sd;
     }
     
-    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around theoretical move 17.
+    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around move 17.
     
     double incUsage = 50.0 + 30.0 * gauss(mn, 17.0, 450.0);
     double ratio = std::min(1.0, TRatio * (1.0 + incUsage * myInc / (myTime * sd)));
