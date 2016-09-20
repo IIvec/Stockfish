@@ -48,9 +48,9 @@ namespace {
  
     if (movesToGo)
     {
-        TRatio = (T == OptimumTime ? 0.957 : 6.033) / movesToGo;
+        TRatio = (T == OptimumTime ? 0.965 : 6.081) / movesToGo;
         if (mn <= 40)
-            TRatio *= gauss(movesToGo, 19.0, 1900.0);
+            TRatio *= gauss(movesToGo, 19.0, 1700.0);
     }
     else
     {
