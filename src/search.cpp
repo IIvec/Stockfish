@@ -397,7 +397,7 @@ void Thread::search() {
           if (rootDepth >= 5 * ONE_PLY)
           {
               Value prevScore = rootMoves[PVIdx].previousScore;
-              delta = Value(int((20.0 + 0.055 * abs(prevScore)) * pow(rootDepth / ONE_PLY, -0.08)));
+              delta = Value(int((11.3 + 0.025 * abs(prevScore)) * pow(rootDepth / ONE_PLY, 0.15)));
               alpha = std::max(prevScore - delta,-VALUE_INFINITE);
               beta  = std::min(prevScore + delta, VALUE_INFINITE);
           }
