@@ -29,7 +29,6 @@
 #include "thread.h"
 #include "timeman.h"
 #include "uci.h"
-#include "numasf.h"
 
 using namespace std;
 
@@ -209,10 +208,6 @@ void UCI::loop(int argc, char* argv[]) {
              << Options["Threads"] << " " << depth << " current perft";
 
           benchmark(pos, ss);
-      }
-	  else if (token == "info")
-      {
-          NumaInfo.display();
       }
       else
           sync_cout << "Unknown command: " << cmd << sync_endl;
