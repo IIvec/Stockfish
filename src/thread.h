@@ -72,7 +72,7 @@ public:
   HistoryStats history;
   MoveStats counterMoves;
   FromToStats fromTo;
-  CounterMoveHistoryStats counterMoveHistory;
+  CounterMoveHistoryStats* counterMoveHistory;
 };
 
 
