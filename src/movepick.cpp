@@ -149,9 +149,9 @@ void MovePicker::score<QUIETS>() {
   Color c = pos.side_to_move();
 
   for (auto& m : *this)
-      m.value =  (cmh  ?  (*cmh)[pos.moved_piece(m)][to_sq(m)] : VALUE_ZERO)
-               + (fmh  ?  (*fmh)[pos.moved_piece(m)][to_sq(m)] : VALUE_ZERO)
-               + (fmh2 ? (*fmh2)[pos.moved_piece(m)][to_sq(m)] : VALUE_ZERO)
+      m.value =   (*cmh)[pos.moved_piece(m)][to_sq(m)]
+               +  (*fmh)[pos.moved_piece(m)][to_sq(m)]
+               + (*fmh2)[pos.moved_piece(m)][to_sq(m)]
                + history.get(c, m);
 }
 
@@ -175,7 +175,7 @@ void MovePicker::score<EVASIONS>() {
 /// left. It picks the move with the biggest value from a list of generated moves
 /// taking care not to return the ttMove if it has already been searched.
 
-Move MovePicker::next_move() {
+Move MovePicker::next_move(bool skipQuiets) {
 
   Move move;
 
@@ -250,7 +250,15 @@ Move MovePicker::next_move() {
   case QUIET:
       while (cur < endMoves)
       {
-          move = *cur++;
+          
+		  if (skipQuiets && cur->value < VALUE_ZERO)
+		  {
+			  cur = endMoves;
+			  break;
+		  }
+
+		  move = *cur++;
+
           if (   move != ttMove
               && move != ss->killers[0]
               && move != ss->killers[1]
