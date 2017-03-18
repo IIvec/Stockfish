@@ -42,8 +42,8 @@ struct HistoryStats {
     Square from = from_sq(m);
     Square to = to_sq(m);
 
-    table[c][from][to] -= table[c][from][to] * abs(int(v)) / 324;
-    table[c][from][to] += int(v) * 32;
+    table[c][from][to] -= table[c][from][to] / 6;
+    table[c][from][to] += int(v);
   }
 
 private:
@@ -65,8 +65,8 @@ struct Stats {
   void update(Piece pc, Square to, Move m) { table[pc][to] = m; }
   void update(Piece pc, Square to, Value v) {
 
-    table[pc][to] -= table[pc][to] * abs(int(v)) / 936;
-    table[pc][to] += int(v) * 32;
+    table[pc][to] -= table[pc][to] / 36;
+    table[pc][to] += int(v);
   }
 
 private:
