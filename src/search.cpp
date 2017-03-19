@@ -543,7 +543,7 @@ namespace {
     Depth extension, newDepth;
     Value bestValue, value, ttValue, eval;
     bool ttHit, inCheck, givesCheck, singularExtensionNode, improving;
-    bool captureOrPromotion, doFullDepthSearch, moveCountPruning;
+    bool captureOrPromotion, doFullDepthSearch, moveCountPruning, skipQuiets;
     Piece moved_piece;
     int moveCount, quietCount;
 
@@ -830,10 +830,11 @@ moves_loop: // When in check search starts from here
                            && !excludedMove // Recursive singular search is not allowed
                            && (tte->bound() & BOUND_LOWER)
                            &&  tte->depth() >= depth - 3 * ONE_PLY;
+    skipQuiets = false;
 
     // Step 11. Loop through moves
     // Loop through all pseudo-legal moves until no moves remain or a beta cutoff occurs
-    while ((move = mp.next_move()) != MOVE_NONE)
+    while ((move = mp.next_move(skipQuiets)) != MOVE_NONE)
     {
       assert(is_ok(move));
 
@@ -907,8 +908,10 @@ moves_loop: // When in check search starts from here
               && (!pos.advanced_pawn_push(move) || pos.non_pawn_material() >= 5000))
           {
               // Move count based pruning
-              if (moveCountPruning)
+              if (moveCountPruning) {
+                  skipQuiets = true;
                   continue;
+              }
 
               // Reduced depth of the next LMR search
               int lmrDepth = std::max(newDepth - reduction<PvNode>(improving, depth, moveCount), DEPTH_ZERO) / ONE_PLY;
