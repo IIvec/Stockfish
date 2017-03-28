@@ -20,7 +20,6 @@
 
 #ifndef MOVEPICK_H_INCLUDED
 #define MOVEPICK_H_INCLUDED
-
 #include <algorithm> // For std::max
 #include <cstring>   // For std::memset
 
