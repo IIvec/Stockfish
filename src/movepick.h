@@ -41,11 +41,9 @@ struct HistoryStats {
     Square from = from_sq(m);
     Square to = to_sq(m);
 
-    const int D = 324;
+    const int D = 40;
 
-    assert(abs(v) <= D); // Consistency check for below formula
-
-    table[c][from][to] -= table[c][from][to] * abs(v) / D;
+    table[c][from][to] -= table[c][from][to] * int(sqrt(abs(v))) / D;
     table[c][from][to] += v * 32;
   }
 
@@ -68,11 +66,9 @@ struct Stats {
   void update(Piece pc, Square to, Move m) { table[pc][to] = m; }
   void update(Piece pc, Square to, int v) {
 
-    const int D = 936;
+    const int D = 116;
 
-    assert(abs(v) <= D); // Consistency check for below formula
-
-    table[pc][to] -= table[pc][to] * abs(v) / D;
+    table[pc][to] -= table[pc][to] * int(sqrt(abs(v))) / D;
     table[pc][to] += v * 32;
   }
 
