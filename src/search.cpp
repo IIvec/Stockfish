@@ -744,7 +744,7 @@ namespace {
     // Step 8. Null move search with verification search (is omitted in PV nodes)
     if (   !PvNode
         &&  eval >= beta
-        && (ss->staticEval >= beta - 35 * (depth / ONE_PLY - 6) || depth >= 13 * ONE_PLY)
+        && (ss->staticEval >= beta - int(320 * log(depth / ONE_PLY)) + 575)
         &&  thisThread->maxPly + 5 * ONE_PLY > thisThread->rootDepth
         && !(depth > 12 * ONE_PLY && MoveList<LEGAL>(pos).size() < 4)
         &&  pos.non_pawn_material(pos.side_to_move()) > (depth > 12 * ONE_PLY) * BishopValueMg)
