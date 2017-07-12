@@ -794,10 +794,22 @@ namespace {
         }
         // Endings where weaker side can place his king in front of the opponent's
         // pawns are drawish.
-        else if (    abs(eg) <= BishopValueEg
-                 &&  pos.count<PAWN>(strongSide) <= 2
-                 && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
-            return ScaleFactor(37 + 7 * pos.count<PAWN>(strongSide));
+        else if (    abs(eg) <= BishopValueEg)
+        {
+            int strongCount = pos.count<PAWN>(strongSide);
+
+            if (   (strongCount <= 2)
+                && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
+                return ScaleFactor(37 + 7 * strongCount);
+            else
+            {
+                Bitboard strongPawns = pos.pieces(strongSide, PAWN);
+                bool bothFlanks = (strongPawns & QueenSide) && (strongPawns & KingSide);
+                if (   !bothFlanks
+                    && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
+                    return ScaleFactor(37 + 4 * strongCount);
+            }
+        }
     }
 
     return sf;
