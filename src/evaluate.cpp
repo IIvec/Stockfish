@@ -796,18 +796,9 @@ namespace {
         // pawns are drawish.
         else if (    abs(eg) <= BishopValueEg
                  &&  pos.count<PAWN>(strongSide) <= 2
+                 &&  pos.non_pawn_material(strongSide) > BishopValueMg
                  && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
-        {
-            Value strongNonPawn = pos.non_pawn_material(strongSide);
-            if (strongNonPawn > RookValueMg)
-                return ScaleFactor(37 + 7 * pos.count<PAWN>(strongSide));
-            else if (strongNonPawn == RookValueMg)
-                return ScaleFactor(30 + 7 * pos.count<PAWN>(strongSide));
-            else if (strongNonPawn > 0)
-                return ScaleFactor(44 + 7 * pos.count<PAWN>(strongSide));
-            else
-                return ScaleFactor(50 + 7 * pos.count<PAWN>(strongSide));
-        }
+            return ScaleFactor(37 + 7 * pos.count<PAWN>(strongSide));
     }
 
     return sf;
