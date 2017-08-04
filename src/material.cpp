@@ -3,17 +3,14 @@
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
   Copyright (C) 2015-2017 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
-
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
-
   Stockfish is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
   GNU General Public License for more details.
-
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
@@ -60,9 +57,13 @@ namespace {
 
   // QueenMinorsImbalance[opp_minor_count] is applied when only one side has a queen.
   // It contains a bonus/malus for the side with the queen.
-  const int QueenMinorsImbalance[13] = {
-    31, -8, -15, -25, -5
-  };
+  const int QueenMinorsImbalance[11][13] = { 
+    
+   {  27, -6, -19, -32, -7 },
+   {  28, -5, -11, -24, -2 },
+   {  40, -2, -16, -29,  0 },
+   {  32,-11, -12, -31,  2 }
+   };
 
   // Endgame evaluation and scaling functions are accessed directly and not through
   // the function maps because they correspond to more than one material hash key.
@@ -118,8 +119,10 @@ namespace {
     }
 
     // Special handling of Queen vs. Minors
-    if  (pieceCount[Us][QUEEN] == 1 && pieceCount[Them][QUEEN] == 0)
-         bonus += QueenMinorsImbalance[pieceCount[Them][KNIGHT] + pieceCount[Them][BISHOP]];
+    if  (pieceCount[Us][QUEEN] > pieceCount[Them][QUEEN]
+      && pieceCount[Them][ROOK] >= pieceCount[Us][ROOK])
+    
+        bonus += QueenMinorsImbalance[pieceCount[Them][ROOK] - pieceCount[Us][ROOK]][pieceCount[Them][KNIGHT] + pieceCount[Them][BISHOP]];
 
     return bonus;
   }
