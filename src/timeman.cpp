@@ -32,44 +32,40 @@ namespace {
 
   enum TimeType { OptimumTime, MaxTime };
 
-  template<TimeType T>
-  int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply)
-  {
+  int remaining(int myTime, int myInc, int moveOverhead,
+                int movesToGo, int ply, TimeType type) {
+
     if (myTime <= 0)
         return 0;
 
-    double TRatio, sd = 8.5;
-    int mn = (ply + 1) / 2; // current move number for any side
+    int moveNumber = (ply + 1) / 2;
+    double ratio;    // Which ratio of myTime we are going to use. It is <= 1
+    double sd = 8.5; // ???
 
-    /// In moves to go case we distribute time according to quadratic function with the maximum around move 20 for 40 moves in y time case.
- 
+    // Usage of increment follows quadratic distribution with the maximum at move 25
+    double inc = myInc * std::max(55.0, 120.0 - 0.12 * (moveNumber - 25) * (moveNumber - 25));
+
+    // In moves-to-go we distribute time according to a quadratic function with
+    // the maximum around move 20 for 40 moves in y time case.
     if (movesToGo)
     {
-        TRatio = (T == OptimumTime ? 1.0 : 6.0) / std::min(50, movesToGo);
-        if (mn <= 40)
-            TRatio *= (1.1 - 0.001 * (mn-20) * (mn-20));
+        ratio = (type == OptimumTime ? 1.0 : 6.0) / std::min(50, movesToGo);
+
+        if (moveNumber <= 40)
+            ratio *= 1.1 - 0.001 * (moveNumber - 20) * (moveNumber - 20);
         else
-            TRatio *= 1.5;
+            ratio *= 1.5;
     }
+    // Otherwise we increase usage of remaining time as the game goes on
     else
     {
-        /// In non-moves to go case we increase usage of remaining time as the game goes on. This is controlled by parameter sd.
-
-        sd = 1.0 + 20.0 * mn / (500.0 + mn);
-        TRatio = (T == OptimumTime ? 0.017 : 0.07) * sd;
+        sd = 1 + 20 * moveNumber / (500.0 + moveNumber);
+        ratio = (type == OptimumTime ? 0.017 : 0.07) * sd;
     }
-    
-    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows quadratic distribution with the maximum at move 25.
-    
-    double incUsage = 0.0;
 
-    if (myInc) 
-        incUsage = std::max(55.0, 120.0 - 0.12 * (mn-25) * (mn-25));
+    ratio = std::min(1.0, ratio * (1 + inc / (myTime * sd)));
 
-    double ratio = std::min(1.0, TRatio * (1.0 + incUsage * myInc / (myTime * sd)));
-    int timeLeft = std::max(0, myTime - moveOverhead);
-
-    return int(timeLeft * ratio); // Intel C++ asks for an explicit cast
+    return int(ratio * std::max(0, myTime - moveOverhead));
   }
 
 } // namespace
@@ -105,9 +101,8 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply)
   }
 
   startTime = limits.startTime;
-
-      optimumTime = remaining<OptimumTime>(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply);
-      maximumTime = remaining<MaxTime    >(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply);
+  optimumTime = remaining(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, OptimumTime);
+  maximumTime = remaining(limits.time[us], limits.inc[us], moveOverhead, limits.movestogo, ply, MaxTime);
 
   if (Options["Ponder"])
       optimumTime += optimumTime / 4;
