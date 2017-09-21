@@ -53,6 +53,7 @@ namespace {
         else
             ratio *= 1.5;
 
+        ratio = std::min(0.5, ratio);
         ratio *= 1 + inc / (myTime * 8.5);
     }
     // Otherwise we increase usage of remaining time as the game goes on
