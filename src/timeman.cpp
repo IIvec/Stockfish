@@ -59,7 +59,7 @@ namespace {
     // Otherwise we increase usage of remaining time as the game goes on
     else
     {
-        double k = 1 + slowMover / 10.0 * exp(-(moveNum - 60) * (moveNum - 60) / 1500.0);
+        double k = slowMover / 10.0 * exp(-(moveNum - 60) * (moveNum - 60) / 4000.0);
         ratio = (type == OptimumTime ? 0.017 : 0.07) * (k + inc / myTime);
     }
 
