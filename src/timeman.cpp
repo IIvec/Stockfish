@@ -31,7 +31,7 @@ namespace {
 
   enum TimeType { OptimumTime, MaxTime };
 
-  int remaining(int myTime, int myInc, int moveOverhead, int slowMover, int movesToGo,
+  int remaining(int myTime, int myInc, int herTime, int moveOverhead, int slowMover, int movesToGo,
                 int moveNum, bool ponder, TimeType type) {
 
     if (myTime <= 0)
@@ -62,6 +62,9 @@ namespace {
         double k = slowMover / 10.0 * exp(-(moveNum - 60) * (moveNum - 60) / 4000.0);
         ratio = (type == OptimumTime ? 0.017 : 0.07) * (k + inc / myTime);
     }
+
+    // We also try to take advantage of possible weaknesses in time management of our opponent
+    ratio *= (2 * myTime + 8 * herTime) / (10.0 * herTime); 
 
     int time = int(std::min(1.0, ratio) * std::max(0, myTime - moveOverhead));
 
@@ -108,8 +111,8 @@ void TimeManagement::init(Search::LimitsType& limits, Color us, int ply)
   int moveNum = (ply + 1) / 2;
 
   startTime = limits.startTime;
-  optimumTime = remaining(limits.time[us], limits.inc[us], moveOverhead, slowMover,
+  optimumTime = remaining(limits.time[us], limits.inc[us], limits.time[~us], moveOverhead, slowMover,
                           limits.movestogo, moveNum, ponder, OptimumTime);
-  maximumTime = remaining(limits.time[us], limits.inc[us], moveOverhead, slowMover, 
+  maximumTime = remaining(limits.time[us], limits.inc[us], limits.time[~us], moveOverhead, slowMover, 
                           limits.movestogo, moveNum, ponder, MaxTime);
 }
