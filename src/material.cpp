@@ -49,8 +49,8 @@ namespace {
     {  45,    0                         }, // Pawn
     {  12,   70,   0                    }, // Knight      OUR PIECES
     {  70,   75,  35,     0             }, // Bishop
-    {  55,   30,  30,   -30,   50       }, // Rook
-    { 150,   90, -25,   120,  200,    0 }  // Queen
+    {  55,   30,  30,   -30,    0       }, // Rook
+    { 100,   90, -45,   150,  250,    0 }  // Queen
   };
 
   // PawnSet[pawn count] contains a bonus/malus indexed by number of pawns
