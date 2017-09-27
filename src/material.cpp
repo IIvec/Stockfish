@@ -34,23 +34,23 @@ namespace {
   const int QuadraticOurs[][PIECE_TYPE_NB] = {
     //            OUR PIECES
     // pair pawn knight bishop rook queen
-    {1667                               }, // Bishop pair
-    {  40,    0                         }, // Pawn
-    {  32,  255,  -3                    }, // Knight      OUR PIECES
-    {   0,  104,   4,    0              }, // Bishop
-    { -26,   -2,  47,   105,  -149      }, // Rook
-    {-185,   24, 122,   137,  -134,   0 }  // Queen
+    {1640                               }, // Bishop pair
+    {  48,    0                         }, // Pawn
+    {  25,  280,   0                    }, // Knight      OUR PIECES
+    {   0,   90,  25,    0              }, // Bishop
+    { -35,    0,  40,   120,  -120      }, // Rook
+    {-200,   35, 140,   150,  -150,   0 }  // Queen
   };
 
   const int QuadraticTheirs[][PIECE_TYPE_NB] = {
     //           THEIR PIECES
     // pair pawn knight bishop rook queen
     {   0                               }, // Bishop pair
-    {  36,    0                         }, // Pawn
-    {   9,   63,   0                    }, // Knight      OUR PIECES
-    {  59,   65,  42,     0             }, // Bishop
-    {  46,   39,  24,   -24,    0       }, // Rook
-    { 101,  100, -37,   141,  268,    0 }  // Queen
+    {  45,    0                         }, // Pawn
+    {  12,   70,   0                    }, // Knight      OUR PIECES
+    {  70,   75,  35,     0             }, // Bishop
+    {  55,   30,  30,   -30,   50       }, // Rook
+    { 150,   90, -25,   120,  200,    0 }  // Queen
   };
 
   // PawnSet[pawn count] contains a bonus/malus indexed by number of pawns
