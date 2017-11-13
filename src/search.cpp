@@ -583,8 +583,6 @@ namespace {
             {
                 if (!pos.capture_or_promotion(ttMove))
                     update_stats(pos, ss, ttMove, nullptr, 0, stat_bonus(depth));
-                else
-                    update_capture_stats(pos, ttMove, nullptr, 0, stat_bonus(depth));
 
                 // Extra penalty for a quiet TT move in previous ply when it gets refuted
                 if ((ss-1)->moveCount == 1 && !pos.captured_piece())
@@ -1615,10 +1613,6 @@ void Tablebases::filter_root_moves(Position& pos, Search::RootMoves& rootMoves) 
     ProbeDepth = Options["SyzygyProbeDepth"] * ONE_PLY;
     Cardinality = Options["SyzygyProbeLimit"];
 
-    // Don't filter any moves if the user requested analysis on multiple
-    if (Options["MultiPV"] != 1)
-        return;
-
     // Skip TB probing when no TB found: !TBLargest -> !TB::Cardinality
     if (Cardinality > MaxCardinality)
     {
@@ -1627,6 +1621,10 @@ void Tablebases::filter_root_moves(Position& pos, Search::RootMoves& rootMoves) 
     }
 
     if (Cardinality < popcount(pos.pieces()) || pos.can_castle(ANY_CASTLING))
+        return;
+
+    // Don't filter any moves if the user requested analysis on multiple
+    if (Options["MultiPV"] != 1)
         return;
 
     // If the current root position is in the tablebases, then RootMoves
