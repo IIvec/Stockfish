@@ -839,6 +839,7 @@ namespace {
 
     // Main evaluation begins here
 
+    srand(time(0));
     initialize<WHITE>();
     initialize<BLACK>();
 
@@ -870,6 +871,8 @@ namespace {
        + eg_value(score) * int(PHASE_MIDGAME - me->game_phase()) * sf / SCALE_FACTOR_NORMAL;
 
     v /= int(PHASE_MIDGAME);
+    
+    v += rand()%11 - 5;
 
     // In case of tracing add all remaining individual evaluation terms
     if (T)
