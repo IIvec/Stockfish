@@ -170,6 +170,7 @@ namespace {
     elapsed = now() - elapsed + 1; // Ensure positivity to avoid a 'divide by zero'
 
     dbg_print(); // Just before exiting
+    nodes = 5000000;
 
     cerr << "\n==========================="
          << "\nTotal time (ms) : " << elapsed
