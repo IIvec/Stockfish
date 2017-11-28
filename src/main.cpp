@@ -35,6 +35,7 @@ namespace PSQT {
 int main(int argc, char* argv[]) {
 
   std::cout << engine_info() << std::endl;
+  srand(time(0));
 
   UCI::init(Options);
   PSQT::init();
