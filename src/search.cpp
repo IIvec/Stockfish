@@ -200,9 +200,12 @@ void MainThread::search() {
   TT.new_search();
 
   int contempt = Options["Contempt"] * PawnValueEg / 100; // From centipawns
+  int wcontempt = Options["White Contempt"] * PawnValueEg / 100; 
 
   Eval::Contempt = (us == WHITE ?  make_score(contempt, contempt / 2)
                                 : -make_score(contempt, contempt / 2));
+  Eval::Wcontempt = make_score(wcontempt, wcontempt / 2);
+
 
   if (rootMoves.empty())
   {

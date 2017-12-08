@@ -32,6 +32,7 @@ namespace Eval {
 const Value Tempo = Value(20); // Must be visible to search
 
 extern Score Contempt;
+extern Score Wcontempt;
 
 std::string trace(const Position& pos);
 
