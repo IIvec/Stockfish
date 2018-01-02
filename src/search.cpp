@@ -709,6 +709,8 @@ namespace {
             // Do verification search when searching for mate
             Value v = depth-R < ONE_PLY ? qsearch<NonPV, false>(pos, ss, beta-1, beta)
                                         :  search<NonPV>(pos, ss, beta-1, beta, depth-R, false, true);
+            thisThread->pair = pair;
+            thisThread->nmp_ply = nmp_ply;
 
             if (v >= beta)
                 return nullValue;
