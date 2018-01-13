@@ -220,7 +220,6 @@ namespace {
   const Score WeakQueen             = S( 50, 10);
   const Score CloseEnemies          = S(  7,  0);
   const Score PawnlessFlank         = S( 20, 80);
-  const Score ThreatByHangingPawn   = S( 71, 61);
   const Score ThreatBySafePawn      = S(192,175);
   const Score ThreatByRank          = S( 16,  3);
   const Score Hanging               = S( 48, 27);
@@ -488,7 +487,11 @@ namespace {
 
         // Transform the kingDanger units into a Score, and substract it from the evaluation
         if (kingDanger > 0)
+        {
+            int mobilityDanger = mg_value(mobility[Them] - mobility[Us]);
+            kingDanger = std::max(0, kingDanger + mobilityDanger);
             score -= make_score(kingDanger * kingDanger / 4096, kingDanger / 16);
+        }
     }
 
     // King tropism: firstly, find squares that opponent attacks in our king flank
@@ -542,9 +545,6 @@ namespace {
         safeThreats = (shift<Right>(b) | shift<Left>(b)) & weak;
 
         score += ThreatBySafePawn * popcount(safeThreats);
-
-        if (weak ^ safeThreats)
-            score += ThreatByHangingPawn;
     }
 
     // Squares strongly protected by the opponent, either because they attack the
