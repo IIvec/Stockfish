@@ -179,7 +179,7 @@ namespace {
 
   // RookOnFile[semiopen/open] contains bonuses for each rook when there is no
   // friendly pawn on the rook file.
-  const Score RookOnFile[] = { S(20, 7), S(45, 20) };
+  const Score RookOnFile[] = { S(21, 7), S(46, 21) };
 
   // ThreatByMinor/ByRook[attacked PieceType] contains bonuses according to
   // which piece type attacks which one. Attacks on lesser pieces which are
@@ -245,8 +245,7 @@ namespace {
   const int BishopSafeCheck = 435;
   const int KnightSafeCheck = 790;
 
-  // Threshold for lazy and space evaluation
-  const Value LazyThreshold  = Value(1500);
+  // Threshold for space evaluation  
   const Value SpaceThreshold = Value(12222);
 
 
@@ -848,10 +847,7 @@ namespace {
     pe = Pawns::probe(pos);
     score += pe->pawns_score();
 
-    // Early exit if score is high
-    Value v = (mg_value(score) + eg_value(score)) / 2;
-    if (abs(v) > LazyThreshold)
-       return pos.side_to_move() == WHITE ? v : -v;
+    Value v;
 
     // Main evaluation begins here
 
