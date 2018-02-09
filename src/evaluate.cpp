@@ -901,7 +901,7 @@ namespace {
 
 } // namespace
 
-Score Eval::Contempt = SCORE_ZERO;
+std::atomic<Score> Eval::Contempt;
 
 /// evaluate() is the evaluator for the outer world. It returns a static evaluation
 /// of the position from the point of view of the side to move.
@@ -919,7 +919,10 @@ std::string Eval::trace(const Position& pos) {
 
   std::memset(scores, 0, sizeof(scores));
 
-  Value v = Evaluation<TRACE>(pos).value() + Eval::Tempo;
+  Eval::Contempt = SCORE_ZERO;
+
+  Value v = Eval::Tempo + Evaluation<TRACE>(pos).value();
+
   v = pos.side_to_move() == WHITE ? v : -v; // White's point of view
 
   std::stringstream ss;
