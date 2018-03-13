@@ -146,18 +146,24 @@ namespace {
   const Score ThreatByKing[] = { S(3, 65), S(9, 145) };
 
   // PassedRank[Rank] contains a bonus according to the rank of a passed pawn
-  const Score PassedRank[RANK_NB] = {
+  Score PassedRank[RANK_NB] = {
     S(0, 0), S(5, 7), S(5, 13), S(32, 42), S(70, 70), S(172, 170), S(217, 269)
   };
 
+TUNE(SetRange(-500,500), PassedRank);
+
   // PassedFile[File] contains a bonus according to the file of a passed pawn
-  const Score PassedFile[FILE_NB] = {
+  Score PassedFile[FILE_NB] = {
     S(  9, 10), S(2, 10), S(1, -8), S(-20,-12),
     S(-20,-12), S(1, -8), S(2, 10), S(  9, 10)
   };
 
+TUNE(SetRange(-50,50), PassedFile);
+
   // PassedDanger[Rank] contains a term to weight the passed score
-  const int PassedDanger[RANK_NB] = { 0, 0, 0, 2, 7, 12, 19 };
+  int PassedDanger[RANK_NB] = { 0, 0, 0, 2, 7, 12, 19 };
+
+TUNE(SetRange(-50,50), PassedDanger);
 
   // KingProtector[PieceType-2] contains a penalty according to distance from king
   const Score KingProtector[] = { S(3, 5), S(4, 3), S(3, 0), S(1, -1) };
@@ -167,7 +173,7 @@ namespace {
   const Score CloseEnemies      = S(  7,  0);
   const Score Connectivity      = S(  3,  1);
   const Score Hanging           = S( 52, 30);
-  const Score HinderPassedPawn  = S(  8,  1);
+  Score HinderPassedPawn  = S(  8,  1);
   const Score KnightOnQueen     = S( 21, 11);
   const Score LongRangedBishop  = S( 22,  0);
   const Score MinorBehindPawn   = S( 16,  0);
@@ -181,6 +187,8 @@ namespace {
   const Score TrappedRook       = S( 92,  0);
   const Score WeakQueen         = S( 50, 10);
   const Score WeakUnopposedPawn = S(  5, 25);
+
+TUNE(SetRange(-30,30), HinderPassedPawn);
 
 #undef S
 
