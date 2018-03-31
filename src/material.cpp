@@ -28,7 +28,7 @@
 using namespace std;
 
 inline Range centered_range(int v) {
-  return v > 0 ? Range(-2 * v, 2 * v) : (v < 0 ? Range(2 * v, -2 * v) : Range(-200, 200));
+  return v > 0 ? Range(-v, 2 * v) : (v < 0 ? Range(2 * v, -v) : Range(-100, 100));
 }
 
 namespace {
