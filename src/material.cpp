@@ -28,22 +28,22 @@
 using namespace std;
 
 inline Range centered_range(int v) {
-  return v != 0 ? Range(v - 2000, v + 2000) : Range(0, 0);
+  return v > 0 ? Range(-2 * v, 2 * v) : (v < 0 ? Range(2 * v, -2 * v) : Range(-200, 200));
 }
 
 namespace {
 
   // Polynomial material imbalance parameters
 
-  int Linear[] = { 1667, 1, 1, 1, 1, 1 };
+  int Linear[] = { 1667, 0, 0, 0, 0, 0 };
 
   int QuadraticOurs[][PIECE_TYPE_NB] = {
     //            OUR PIECES
     // pair pawn knight bishop rook queen
     {   0                               }, // Bishop pair
-    {  40,    1                         }, // Pawn
+    {  40,    0                         }, // Pawn
     {  32,  255,  -3                    }, // Knight      OUR PIECES
-    {   0,  104,   4,     1             }, // Bishop
+    {   0,  104,   4,     0             }, // Bishop
     { -26,   -2,  47,   105,  -149      }, // Rook
     {-189,   24, 117,   133,  -134, -10 }  // Queen
   };
@@ -66,41 +66,41 @@ namespace {
         //            OUR PIECES
         // pair pawn knight bishop rook queen
         {  0                                }, // Bishop pair
-        {  1,   1                           }  // Pawn        OUR PIECES
+        {  0,   0                           }  // Pawn        OUR PIECES
     },
     {   // Knight
         //            OUR PIECES
         // pair pawn knight bishop rook queen
         {  0                                }, // Bishop pair
-        {  1,   1                           }, // Pawn
-        {  1,   1,   1                      }  // Knight      OUR PIECES
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }  // Knight      OUR PIECES
     },
     {   // Bishop
         //            OUR PIECES
         // pair pawn knight bishop rook queen
         {  0                                }, // Bishop pair
-        {  1,   1                           }, // Pawn
-        {  1,   1,   1                      }, // Knight      OUR PIECES
-        {  0,   1,   1,    1                }  // Bishop
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }, // Knight      OUR PIECES
+        {  0,   0,   0,    0                }  // Bishop
     },
     {   // Rook
         //            OUR PIECES
         // pair pawn knight bishop rook queen
         {  0                                }, // Bishop pair
-        {  1,   1                           }, // Pawn
-        {  1,   1,   1                      }, // Knight      OUR PIECES
-        {  0,   1,   1,    1                }, // Bishop
-        {  1,   1,   1,    1,      1        }  // Rook
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }, // Knight      OUR PIECES
+        {  0,   0,   0,    0                }, // Bishop
+        {  0,   0,   0,    0,      0        }  // Rook
     },
     {   // Queen
         //            OUR PIECES
         // pair pawn knight bishop rook queen
         {  0                                }, // Bishop pair
-        {  1,   1                           }, // Pawn
-        {  1,   1,   1                      }, // Knight      OUR PIECES
-        {  0,   1,   1,    1                }, // Bishop
-        {  1,   1,   1,    1,      1        }, // Rook
-        {  1,   1,   1,    1,      1,   1   }  // Queen
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }, // Knight      OUR PIECES
+        {  0,   0,   0,    0                }, // Bishop
+        {  0,   0,   0,    0,      0        }, // Rook
+        {  0,   0,   0,    0,      0,   0   }  // Queen
     }
   };
 
@@ -110,42 +110,42 @@ namespace {
     {   // Pawn
         //            THEIR PIECES
         // pair pawn knight bishop rook queen
-        {  1,   1,   1,     1,     1,   1   }, // Bishop pair
-        {  1,   1,   1,     1,     1,   1   }  // Pawn        OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }  // Pawn        OUR PIECES
     },
     {   // Knight
         //            THEIR PIECES
         // pair pawn knight bishop rook queen
-        {  1,   1,   1,     1,     1,   1   }, // Bishop pair
-        {  1,   1,   1,     1,     1,   1   }, // Pawn
-        {  1,   1,   1,     1,     1,   1   }  // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }  // Knight      OUR PIECES
     },
     {   // Bishop
         //            THEIR PIECES
         // pair pawn knight bishop rook queen
-        {  1,   1,   1,     1,     1,   1   }, // Bishop pair
-        {  1,   1,   1,     1,     1,   1   }, // Pawn
-        {  1,   1,   1,     1,     1,   1   }, // Knight      OUR PIECES
-        {  1,   1,   1,     1,     1,   1   }  // Bishop
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }, // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }  // Bishop
     },
     {   // Rook
         //            THEIR PIECES
         // pair pawn knight bishop rook queen
-        {  1,   1,   1,     1,     1,   1   }, // Bishop pair
-        {  1,   1,   1,     1,     1,   1   }, // Pawn
-        {  1,   1,   1,     1,     1,   1   }, // Knight      OUR PIECES
-        {  1,   1,   1,     1,     1,   1   }, // Bishop
-        {  1,   1,   1,     1,     1,   1   }  // Rook
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }, // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }, // Bishop
+        {  0,   0,   0,     0,     0,   0   }  // Rook
     },
     {   // Queen
         //            THEIR PIECES
         // pair pawn knight bishop rook queen
-        {  1,   1,   1,     1,     1,   1   }, // Bishop pair
-        {  1,   1,   1,     1,     1,   1   }, // Pawn
-        {  1,   1,   1,     1,     1,   1   }, // Knight      OUR PIECES
-        {  1,   1,   1,     1,     1,   1   }, // Bishop
-        {  1,   1,   1,     1,     1,   1   }, // Rook
-        {  1,   1,   1,     1,     1,   1   }  // Queen
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }, // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }, // Bishop
+        {  0,   0,   0,     0,     0,   0   }, // Rook
+        {  0,   0,   0,     0,     0,   0   }  // Queen
     }
   };
 
