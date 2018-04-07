@@ -27,22 +27,28 @@
 
 using namespace std;
 
+inline Range centered_range(int v) {
+  return v > 0 ? Range(-v, 2 * v) : (v < 0 ? Range(2 * v, -v) : Range(-100, 100));
+}
+
 namespace {
 
   // Polynomial material imbalance parameters
 
-  constexpr int QuadraticOurs[][PIECE_TYPE_NB] = {
+  int Linear[] = { 1667, 0, 0, 0, 0, 0 };
+
+  int QuadraticOurs[][PIECE_TYPE_NB] = {
     //            OUR PIECES
     // pair pawn knight bishop rook queen
-    {1667                               }, // Bishop pair
+    {   0                               }, // Bishop pair
     {  40,    0                         }, // Pawn
     {  32,  255,  -3                    }, // Knight      OUR PIECES
-    {   0,  104,   4,    0              }, // Bishop
+    {   0,  104,   4,     0             }, // Bishop
     { -26,   -2,  47,   105,  -149      }, // Rook
     {-189,   24, 117,   133,  -134, -10 }  // Queen
   };
 
-  constexpr int QuadraticTheirs[][PIECE_TYPE_NB] = {
+  int QuadraticTheirs[][PIECE_TYPE_NB] = {
     //           THEIR PIECES
     // pair pawn knight bishop rook queen
     {   0                               }, // Bishop pair
@@ -52,6 +58,98 @@ namespace {
     {  46,   39,  24,   -24,    0       }, // Rook
     {  97,  100, -42,   137,  268,    0 }  // Queen
   };
+
+  int CubicOurs[][PIECE_TYPE_NB][PIECE_TYPE_NB] = {
+    // OUR PIECES:
+    {}, // Bishop pair
+    {   // Pawn
+        //            OUR PIECES
+        // pair pawn knight bishop rook queen
+        {  0                                }, // Bishop pair
+        {  0,   0                           }  // Pawn        OUR PIECES
+    },
+    {   // Knight
+        //            OUR PIECES
+        // pair pawn knight bishop rook queen
+        {  0                                }, // Bishop pair
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }  // Knight      OUR PIECES
+    },
+    {   // Bishop
+        //            OUR PIECES
+        // pair pawn knight bishop rook queen
+        {  0                                }, // Bishop pair
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }, // Knight      OUR PIECES
+        {  0,   0,   0,    0                }  // Bishop
+    },
+    {   // Rook
+        //            OUR PIECES
+        // pair pawn knight bishop rook queen
+        {  0                                }, // Bishop pair
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }, // Knight      OUR PIECES
+        {  0,   0,   0,    0                }, // Bishop
+        {  0,   0,   0,    0,      0        }  // Rook
+    },
+    {   // Queen
+        //            OUR PIECES
+        // pair pawn knight bishop rook queen
+        {  0                                }, // Bishop pair
+        {  0,   0                           }, // Pawn
+        {  0,   0,   0                      }, // Knight      OUR PIECES
+        {  0,   0,   0,    0                }, // Bishop
+        {  0,   0,   0,    0,      0        }, // Rook
+        {  0,   0,   0,    0,      0,   0   }  // Queen
+    }
+  };
+
+  int CubicTheirs[][PIECE_TYPE_NB][PIECE_TYPE_NB] = {
+    // OUR PIECES:
+    {}, // Bishop pair
+    {   // Pawn
+        //            THEIR PIECES
+        // pair pawn knight bishop rook queen
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }  // Pawn        OUR PIECES
+    },
+    {   // Knight
+        //            THEIR PIECES
+        // pair pawn knight bishop rook queen
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }  // Knight      OUR PIECES
+    },
+    {   // Bishop
+        //            THEIR PIECES
+        // pair pawn knight bishop rook queen
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }, // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }  // Bishop
+    },
+    {   // Rook
+        //            THEIR PIECES
+        // pair pawn knight bishop rook queen
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }, // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }, // Bishop
+        {  0,   0,   0,     0,     0,   0   }  // Rook
+    },
+    {   // Queen
+        //            THEIR PIECES
+        // pair pawn knight bishop rook queen
+        {  0,   0,   0,     0,     0,   0   }, // Bishop pair
+        {  0,   0,   0,     0,     0,   0   }, // Pawn
+        {  0,   0,   0,     0,     0,   0   }, // Knight      OUR PIECES
+        {  0,   0,   0,     0,     0,   0   }, // Bishop
+        {  0,   0,   0,     0,     0,   0   }, // Rook
+        {  0,   0,   0,     0,     0,   0   }  // Queen
+    }
+  };
+
+  TUNE(SetRange(centered_range), Linear, QuadraticOurs, QuadraticTheirs, CubicOurs, CubicTheirs);
 
   // Endgame evaluation and scaling functions are accessed directly and not through
   // the function maps because they correspond to more than one material hash key.
@@ -91,17 +189,27 @@ namespace {
 
     int bonus = 0;
 
-    // Second-degree polynomial material imbalance, by Tord Romstad
+    // Third-degree polynomial material imbalance, by Tord Romstad and Stefan Geschwentner
     for (int pt1 = NO_PIECE_TYPE; pt1 <= QUEEN; ++pt1)
     {
         if (!pieceCount[Us][pt1])
             continue;
 
-        int v = 0;
+        int v = Linear[pt1];
 
         for (int pt2 = NO_PIECE_TYPE; pt2 <= pt1; ++pt2)
+        {
+            int w = 0;
+            for (int pt3 = NO_PIECE_TYPE; pt3 <= pt2; ++pt3)
+                w += CubicOurs[pt1][pt2][pt3] * pieceCount[Us][pt3];
+
+            for (int pt3 = NO_PIECE_TYPE; pt3 <= QUEEN; ++pt3)
+                w += CubicTheirs[pt1][pt2][pt3] * pieceCount[Them][pt3];
+
             v +=  QuadraticOurs[pt1][pt2] * pieceCount[Us][pt2]
-                + QuadraticTheirs[pt1][pt2] * pieceCount[Them][pt2];
+                + QuadraticTheirs[pt1][pt2] * pieceCount[Them][pt2]
+                + w * pieceCount[Us][pt2];
+        }
 
         bonus += pieceCount[Us][pt1] * v;
     }
