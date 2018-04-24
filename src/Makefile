@@ -22,7 +22,7 @@
 ### ==========================================================================
 
 ### Executable name
-EXE = stockfish
+EXE = corchess
 
 ### Installation dir definitions
 PREFIX = /usr/local
