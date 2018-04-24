@@ -92,7 +92,7 @@ namespace {
   // History and stats update bonus, based on depth
   int stat_bonus(Depth depth) {
     int d = depth / ONE_PLY;
-    return d > 17 ? 0 : d * d + 2 * d - 2;
+    return d > 17 ? 0 : 32 * d * d + 64 * d - 64;
   }
 
   // Skill structure is used to implement strength limit
@@ -317,8 +317,7 @@ void Thread::search() {
 
   multiPV = std::min(multiPV, rootMoves.size());
 
-  int ctb = Options["Contempt"]; // Base contempt
-  int ct = ctb * PawnValueEg / 100; // From centipawns
+  int ct = int(Options["Contempt"]) * PawnValueEg / 100; // From centipawns
 
   // In analysis mode, adjust contempt in accordance with user preference
   if (Limits.infinite || Options["UCI_AnalyseMode"])
@@ -381,7 +380,7 @@ void Thread::search() {
               beta  = std::min(prevScore + delta2, VALUE_INFINITE);
 
               // Adjust contempt based on root move's previousScore (dynamic contempt)
-              int dct = ct + int(std::round(4 * ctb * atan(float(prevScore) / 128)));
+              int dct = ct + (ct ? 88 * previousScore / (abs(previousScore) + 200) : 0);
 
               contempt = (us == WHITE ?  make_score(dct, dct / 2)
                                       : -make_score(dct, dct / 2));
@@ -983,29 +982,29 @@ moves_loop: // When in check, search starts from here
       {
           Depth r = reduction<PvNode>(improving, depth, moveCount);
 
-          if (captureOrPromotion)
+          if (captureOrPromotion) // (~5 Elo)
               r -= r ? ONE_PLY : DEPTH_ZERO;
           else
           {
-              // Decrease reduction if opponent's move count is high
+              // Decrease reduction if opponent's move count is high (~5 Elo)
               if ((ss-1)->moveCount > 15)
                   r -= ONE_PLY;
 
-              // Decrease reduction for exact PV nodes
+              // Decrease reduction for exact PV nodes (~0 Elo)
               if (pvExact)
                   r -= ONE_PLY;
 
-              // Increase reduction if ttMove is a capture
+              // Increase reduction if ttMove is a capture (~0 Elo)
               if (ttCapture)
                   r += ONE_PLY;
 
-              // Increase reduction for cut nodes
+              // Increase reduction for cut nodes (~5 Elo)
               if (cutNode)
                   r += 2 * ONE_PLY;
 
               // Decrease reduction for moves that escape a capture. Filter out
               // castling moves, because they are coded as "king captures rook" and
-              // hence break make_move().
+              // hence break make_move(). (~5 Elo)
               else if (    type_of(move) == NORMAL
                        && !pos.see_ge(make_move(to_sq(move), from_sq(move))))
                   r -= 2 * ONE_PLY;
@@ -1016,14 +1015,14 @@ moves_loop: // When in check, search starts from here
                              + (*contHist[3])[movedPiece][to_sq(move)]
                              - 4000;
 
-              // Decrease/increase reduction by comparing opponent's stat score
+              // Decrease/increase reduction by comparing opponent's stat score (~10 Elo)
               if (ss->statScore >= 0 && (ss-1)->statScore < 0)
                   r -= ONE_PLY;
 
               else if ((ss-1)->statScore >= 0 && ss->statScore < 0)
                   r += ONE_PLY;
 
-              // Decrease/increase reduction for moves with a good/bad history
+              // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
               r = std::max(DEPTH_ZERO, (r / ONE_PLY - ss->statScore / 20000) * ONE_PLY);
           }
 
@@ -1637,9 +1636,9 @@ bool RootMove::extract_ponder_from_tt(Position& pos) {
 void Tablebases::rank_root_moves(Position& pos, Search::RootMoves& rootMoves) {
 
     RootInTB = false;
-    UseRule50 = Options["Syzygy50MoveRule"];
-    ProbeDepth = Options["SyzygyProbeDepth"] * ONE_PLY;
-    Cardinality = Options["SyzygyProbeLimit"];
+    UseRule50 = bool(Options["Syzygy50MoveRule"]);
+    ProbeDepth = int(Options["SyzygyProbeDepth"]) * ONE_PLY;
+    Cardinality = int(Options["SyzygyProbeLimit"]);
     bool dtz_available = true;
 
     // Tables with fewer pieces than SyzygyProbeLimit are searched with
