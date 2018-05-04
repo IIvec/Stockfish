@@ -25,7 +25,7 @@
 ifeq ($(COMP),mingw)
 EXE = stockfish.exe
 else
-EXE = stockfish
+EXE = corchess
 endif
 
 ### Installation dir definitions
