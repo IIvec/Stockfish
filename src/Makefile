@@ -23,7 +23,7 @@
 
 ### Executable name
 ifeq ($(COMP),mingw)
-EXE = stockfish.exe
+EXE = corchess.exe
 else
 EXE = corchess
 endif
