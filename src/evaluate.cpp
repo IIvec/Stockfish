@@ -88,7 +88,7 @@ namespace {
   constexpr Value SpaceThreshold = Value(12222);
 
   // KingAttackWeights[PieceType] contains king attack weights by piece type
-  constexpr int KingAttackWeights[PIECE_TYPE_NB] = { 0, 0, 78, 56, 45, 11 };
+  constexpr int KingAttackWeights[PIECE_TYPE_NB] = { 0, 0, 77, 55, 44, 10 };
 
   // Penalties for enemy's safe checks
   constexpr int QueenSafeCheck  = 780;
@@ -280,7 +280,7 @@ namespace {
         else if (file_of(pos.square<KING>(Us)) == FILE_A)
             kingRing[Us] |= shift<EAST>(kingRing[Us]);
 
-        kingAttackersCount[Them] = popcount(attackedBy[Us][KING] & pe->pawn_attacks(Them));
+        kingAttackersCount[Them] = popcount(kingRing[Us] & pe->pawn_attacks(Them));
         kingAttacksCount[Them] = kingAttackersWeight[Them] = 0;
     }
     else
@@ -419,7 +419,7 @@ namespace {
                                            : AllSquares ^ Rank1BB ^ Rank2BB ^ Rank3BB);
 
     const Square ksq = pos.square<KING>(Us);
-    Bitboard weak, b, b1, b2, safe, unsafeChecks, pinned;
+    Bitboard weak, b, b1, b2, safe, unsafeChecks;
 
     // King shelter and enemy pawns storm
     Score score = pe->king_safety<Us>(pos, ksq);
@@ -471,12 +471,11 @@ namespace {
         // Unsafe or occupied checking squares will also be considered, as long as
         // the square is in the attacker's mobility area.
         unsafeChecks &= mobilityArea[Them];
-        pinned = pos.blockers_for_king(Us) & pos.pieces(Us);
 
         kingDanger +=        kingAttackersCount[Them] * kingAttackersWeight[Them]
                      + 102 * kingAttacksCount[Them]
                      + 191 * popcount(kingRing[Us] & weak)
-                     + 143 * popcount(pinned | unsafeChecks)
+                     + 143 * popcount(pos.blockers_for_king(Us) | unsafeChecks)
                      - 848 * !pos.count<QUEEN>(Them)
                      -   9 * mg_value(score) / 8
                      +  40;
