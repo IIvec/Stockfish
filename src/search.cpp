@@ -739,7 +739,7 @@ namespace {
         && (ss-1)->statScore < 22500
         &&  eval >= beta
         &&  ss->staticEval >= beta - int(320 * log(depth / ONE_PLY)) + 500
-        && !ss->excludedMove
+        && !excludedMove
         &&  thisThread->selDepth + 5 > thisThread->rootDepth / ONE_PLY
         &&  pos.non_pawn_material(pos.side_to_move()) > BishopValueMg
         && (ss->ply >= thisThread->nmp_ply || ss->ply % 2 != thisThread->nmp_odd))
