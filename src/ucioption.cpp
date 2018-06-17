@@ -60,7 +60,7 @@ void init(OptionsMap& o) {
   constexpr int MaxHashMB = Is64Bit ? 131072 : 2048;
 
   o["Debug Log File"]        << Option("", on_logger);
-  o["Contempt"]              << Option(21, -100, 100);
+  o["Contempt"]              << Option(12, -100, 100);
   o["Analysis Contempt"]     << Option("Both var Off var White var Black var Both", "Both");
   o["Large Pages"]           << Option(true, on_large_pages);
   o["Threads"]               << Option(1, 1, 512, on_threads);
