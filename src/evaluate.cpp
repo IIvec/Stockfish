@@ -155,9 +155,9 @@ namespace {
   constexpr int PassedDanger[RANK_NB] = { 0, 0, 0, 3, 7, 11, 20 };
 
   // Assorted bonuses and penalties
-  Score BishopPawns        = S(  3,  7);
-  TUNE(BishopPawns);
-  constexpr Score CloseEnemies       = S(  6,  0);
+  constexpr Score BishopPawns        = S(  3,  7);
+  Score CloseEnemies       = S(  6,  0);
+  TUNE(SetRange(-20,20), CloseEnemies);
   constexpr Score Connectivity       = S(  3,  1);
   constexpr Score CorneredBishop     = S( 50, 50);
   constexpr Score Hanging            = S( 52, 30);
