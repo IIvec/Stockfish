@@ -246,15 +246,30 @@ void MainThread::search() {
       && !Skill(Options["Skill Level"]).enabled()
       &&  rootMoves[0].pv[0] != MOVE_NONE)
   {
+      std::map<Move, int> votes;
+      Value minScore = this->rootMoves[0].score;
+
+      // Find out minimum score and reset votes for moves which can be voted
+      for (Thread* th: Threads)
+      {
+          minScore = std::min(minScore, th->rootMoves[0].score);
+          votes[th->rootMoves[0].pv[0]] = 0;
+      }
+
+      // Vote according to score and depth
+      for (Thread* th : Threads)
+          votes[th->rootMoves[0].pv[0]] +=  int(th->rootMoves[0].score - minScore)  
+                                          + int(th->completedDepth);
+
+      // Select best thread
+      int bestVote = votes[this->rootMoves[0].pv[0]];
       for (Thread* th : Threads)
       {
-          Depth depthDiff = th->completedDepth - bestThread->completedDepth;
-          Value scoreDiff = th->rootMoves[0].score - bestThread->rootMoves[0].score;
-
-          // Select the thread with the best score, always if it is a mate
-          if (    scoreDiff > 0
-              && (depthDiff >= 0 || th->rootMoves[0].score >= VALUE_MATE_IN_MAX_PLY))
+          if (votes[th->rootMoves[0].pv[0]] > bestVote)
+          {
+              bestVote = votes[th->rootMoves[0].pv[0]];
               bestThread = th;
+          }
       }
   }
 
@@ -986,18 +1001,12 @@ moves_loop: // When in check, search starts from here
       {
           Depth r = reduction<PvNode>(improving, depth, moveCount);
 
-          if (captureOrPromotion) // (~5 Elo)
-          {
-              // Decrease reduction by comparing opponent's stat score
-              if ((ss-1)->statScore < 0)
-                  r -= ONE_PLY;
-          }
-          else
-          {
-              // Decrease reduction if opponent's move count is high (~5 Elo)
-              if ((ss-1)->moveCount > 15)
-                  r -= ONE_PLY;
+          // Decrease reduction if opponent's move count is high (~10 Elo)
+          if ((ss-1)->moveCount > 15)
+              r -= ONE_PLY;
 
+          if (!captureOrPromotion)
+          {
               // Decrease reduction for exact PV nodes (~0 Elo)
               if (pvExact)
                   r -= ONE_PLY;
