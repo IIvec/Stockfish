@@ -153,7 +153,7 @@ void Search::init() {
       for (int d = 1; d < 128; ++d)
           for (int mc = 1; mc < 64; ++mc)
           {
-              double r = 0.2 * d * (1.0 - exp(-9.0 / d)) * log(mc);
+              double r = 0.215 * d * (1.0 - exp(-8.0 / d)) * log(mc);
 
               Reductions[NonPV][imp][d][mc] = int(std::round(r));
               Reductions[PV][imp][d][mc] = std::max(Reductions[NonPV][imp][d][mc] - 1, 0);
@@ -380,8 +380,8 @@ void Thread::search() {
           if (rootDepth >= 5 * ONE_PLY)
           {
               Value prevScore = rootMoves[pvIdx].previousScore;
-              delta1 = (prevScore < 0) ? Value(int(8.0 + 0.1 * abs(prevScore))) : Value(18);
-              delta2 = (prevScore > 0) ? Value(int(8.0 + 0.1 * abs(prevScore))) : Value(18);
+              delta1 = (prevScore < 0) ? Value(int(6.0 + 0.075 * abs(prevScore))) : Value(14);
+              delta2 = (prevScore > 0) ? Value(int(6.0 + 0.075 * abs(prevScore))) : Value(14);
               alpha = std::max(prevScore - delta1,-VALUE_INFINITE);
               beta  = std::min(prevScore + delta2, VALUE_INFINITE);
 
