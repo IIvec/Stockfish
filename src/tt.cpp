@@ -196,7 +196,7 @@ void TranspositionTable::clear() {
 
   for (size_t idx = 0; idx < Options["Threads"]; idx++)
   {
-      threads.push_back(std::thread([this, idx]() {
+      threads.emplace_back([this, idx]() {
 
           // Thread binding gives faster search on systems with a first-touch policy
           if (Options["Threads"] > 8)
@@ -209,7 +209,7 @@ void TranspositionTable::clear() {
                                 stride : clusterCount - start;
 
           std::memset(&table[start], 0, len * sizeof(Cluster));
-      }));
+      });
   }
 
   for (std::thread& th: threads)
