@@ -72,6 +72,7 @@ namespace {
 
   template <bool PvNode> Depth reduction(bool i, Depth d, int mn) {
     return (Reductions[i][std::min(d / ONE_PLY, 127)][std::min(mn, 63)] - PvNode) * ONE_PLY;
+  }
     
   constexpr int futility_move_count(bool improving, int depth) {
     return (5 + depth * depth) * (1 + improving) / 2;
