@@ -66,14 +66,13 @@ namespace {
     return Value((175 - 50 * improving) * d / ONE_PLY);
   }
 
-  // Reductions lookup table, initialized at startup
-  int Reductions[MAX_MOVES]; // [depth or moveNumber]
+  // Reductions lookup tables, initialized at startup
+  int Reductions[2][MAX_MOVES][MAX_MOVES];  // [improving][depth][moveNumber]
 
   template <bool PvNode> Depth reduction(bool i, Depth d, int mn) {
-    int r = Reductions[d / ONE_PLY] * Reductions[mn] / 1024;
-    return ((r + 512) / 1024 + (!i && r > 1024) - PvNode) * ONE_PLY;
+    return (Reductions[i][d / ONE_PLY][mn] - PvNode) * ONE_PLY;
   }
-
+    
   constexpr int futility_move_count(bool improving, int depth) {
     return (5 + depth * depth) * (1 + improving) / 2;
   }
@@ -147,8 +146,18 @@ namespace {
 
 void Search::init() {
 
-  for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int(1024 * std::log(i) / std::sqrt(1.95));
+  for (int imp = 0; imp <= 1; ++imp)
+      for (int d = 1; d < MAX_MOVES; ++d)
+          for (int mc = 1; mc < MAX_MOVES; ++mc)
+          {
+              double r = 0.215 * d * (1.0 - exp(-8.0 / d)) * log(mc);
+
+              Reductions[imp][d][mc] = std::round(r);
+
+              // Increase reduction for non-PV nodes when eval is not improving
+              if (!imp && r > 1.0)
+                Reductions[imp][d][mc]++;
+          }
 }
 
 
@@ -282,7 +291,7 @@ void Thread::search() {
   // The latter is needed for statScores and killer initialization.
   Stack stack[MAX_PLY+10], *ss = stack+7;
   Move  pv[MAX_PLY+1];
-  Value bestValue, alpha, beta, delta;
+  Value bestValue, alpha, beta, delta1, delta2;
   Move  lastBestMove = MOVE_NONE;
   Depth lastBestMoveDepth = DEPTH_ZERO;
   MainThread* mainThread = (this == Threads.main() ? Threads.main() : nullptr);
@@ -294,7 +303,7 @@ void Thread::search() {
      (ss-i)->continuationHistory = &this->continuationHistory[NO_PIECE][0]; // Use as sentinel
   ss->pv = pv;
 
-  bestValue = delta = alpha = -VALUE_INFINITE;
+  bestValue = delta1 = delta2 = alpha = -VALUE_INFINITE;
   beta = VALUE_INFINITE;
 
   size_t multiPV = Options["MultiPV"];
@@ -355,13 +364,14 @@ void Thread::search() {
           // Reset aspiration window starting size
           if (rootDepth >= 5 * ONE_PLY)
           {
-              Value previousScore = rootMoves[pvIdx].previousScore;
-              delta = Value(20);
-              alpha = std::max(previousScore - delta,-VALUE_INFINITE);
-              beta  = std::min(previousScore + delta, VALUE_INFINITE);
+              Value prevScore = rootMoves[pvIdx].previousScore;
+              delta1 = (prevScore < 0) ? Value(int(12.0 + 0.07 * abs(prevScore))) : Value(16);
+              delta2 = (prevScore > 0) ? Value(int(12.0 + 0.07 * abs(prevScore))) : Value(16);
+              alpha = std::max(prevScore - delta1,-VALUE_INFINITE);
+              beta  = std::min(prevScore + delta2, VALUE_INFINITE);
 
               // Adjust contempt based on root move's previousScore (dynamic contempt)
-              int dct = ct + 88 * previousScore / (abs(previousScore) + 200);
+              int dct = ct + (ct ? 88 * prevScore / (abs(prevScore) + 200) : 0);
 
               contempt = (us == WHITE ?  make_score(dct, dct / 2)
                                       : -make_score(dct, dct / 2));
@@ -403,7 +413,7 @@ void Thread::search() {
               if (bestValue <= alpha)
               {
                   beta = (alpha + beta) / 2;
-                  alpha = std::max(bestValue - delta, -VALUE_INFINITE);
+                  alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
 
                   if (mainThread)
                   {
@@ -413,14 +423,15 @@ void Thread::search() {
               }
               else if (bestValue >= beta)
               {
-                  beta = std::min(bestValue + delta, VALUE_INFINITE);
+                  beta = std::min(bestValue + delta2, VALUE_INFINITE);
                   if (mainThread)
                       ++failedHighCnt;
               }
               else
                   break;
 
-              delta += delta / 4 + 5;
+              delta1 += delta1 / 4 + 5;
+              delta2 += delta2 / 4 + 5;
 
               assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
           }
@@ -607,6 +618,15 @@ namespace {
             : ttHit    ? tte->move() : MOVE_NONE;
     ttPv = (ttHit && tte->is_pv()) || (PvNode && depth > 4 * ONE_PLY);
 
+    // if position has been searched at higher depths and we are shuffling, return value_draw
+    if (pos.rule50_count() > 36
+        && ss->ply > 36
+        && depth < 3 * ONE_PLY
+        && ttHit
+        && tte->depth() > depth
+        && pos.count<PAWN>() > 0)
+        return VALUE_DRAW;
+
     // At non-PV nodes we check for an early TT cutoff
     if (  !PvNode
         && ttHit
@@ -743,15 +763,16 @@ namespace {
         && (ss-1)->currentMove != MOVE_NULL
         && (ss-1)->statScore < 23200
         &&  eval >= beta
-        &&  ss->staticEval >= beta - 36 * depth / ONE_PLY + 225
+        &&  ss->staticEval >= beta - int(320 * log(depth / ONE_PLY)) + 500
         && !excludedMove
-        &&  pos.non_pawn_material(us)
+        &&  thisThread->selDepth + 5 > thisThread->rootDepth / ONE_PLY
+        &&  pos.non_pawn_material(us) > BishopValueMg
         && (ss->ply >= thisThread->nmpMinPly || us != thisThread->nmpColor))
     {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth and value
-        Depth R = ((823 + 67 * depth / ONE_PLY) / 256 + std::min(int(eval - beta) / 200, 3)) * ONE_PLY;
+        Depth R = std::max(1, int(2.6 * log(depth / ONE_PLY)) + std::min(int(eval - beta) / 200, 3)) * ONE_PLY; 
 
         ss->currentMove = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[NO_PIECE][0];
@@ -922,6 +943,10 @@ moves_loop: // When in check, search starts from here
       // Check extension (~2 Elo)
       else if (    givesCheck
                && (pos.blockers_for_king(~us) & from_sq(move) || pos.see_ge(move)))
+          extension = ONE_PLY;
+
+      // Shuffle extension
+      else if(pos.rule50_count() > 14 && ss->ply > 14 && depth < 3 * ONE_PLY && PvNode)
           extension = ONE_PLY;
 
       // Castling extension
