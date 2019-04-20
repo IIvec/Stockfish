@@ -67,7 +67,7 @@ namespace {
   }
 
   // Reductions lookup tables, initialized at startup
-  int Reductions[2][MAX_MOVES][MAX_MOVES];  // [improving][depth][moveNumber]
+  int Reductions[2][MAX_PLY][MAX_MOVES];  // [improving][depth][moveNumber]
 
   template <bool PvNode> Depth reduction(bool i, Depth d, int mn) {
     return (Reductions[i][d / ONE_PLY][mn] - PvNode) * ONE_PLY;
@@ -147,7 +147,7 @@ namespace {
 void Search::init() {
 
   for (int imp = 0; imp <= 1; ++imp)
-      for (int d = 1; d < MAX_MOVES; ++d)
+      for (int d = 1; d < MAX_PLY; ++d)
           for (int mc = 1; mc < MAX_MOVES; ++mc)
           {
               double r = 0.215 * d * (1.0 - exp(-8.0 / d)) * log(mc);
