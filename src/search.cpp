@@ -67,10 +67,10 @@ namespace {
   }
 
   // Reductions lookup tables, initialized at startup
-  int Reductions[2][128][64];  // [improving][depth][moveNumber]
+  int Reductions[2][MAX_MOVES][MAX_MOVES];  // [improving][depth][moveNumber]
 
   template <bool PvNode> Depth reduction(bool i, Depth d, int mn) {
-    return (Reductions[i][std::min(d / ONE_PLY, 127)][std::min(mn, 63)] - PvNode) * ONE_PLY;
+    return (Reductions[i][d / ONE_PLY][mn] - PvNode) * ONE_PLY;
   }
     
   constexpr int futility_move_count(bool improving, int depth) {
@@ -147,8 +147,8 @@ namespace {
 void Search::init() {
 
   for (int imp = 0; imp <= 1; ++imp)
-      for (int d = 1; d < 128; ++d)
-          for (int mc = 1; mc < 64; ++mc)
+      for (int d = 1; d < MAX_MOVES; ++d)
+          for (int mc = 1; mc < MAX_MOVES; ++mc)
           {
               double r = 0.215 * d * (1.0 - exp(-8.0 / d)) * log(mc);
 
