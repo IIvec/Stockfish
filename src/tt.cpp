@@ -27,8 +27,61 @@
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
+#include "windows.h"
 
 TranspositionTable TT; // Our global transposition table
+int use_large_pages = -1;
+int got_privileges = -1;
+
+
+bool Get_LockMemory_Privileges()
+{
+    HANDLE TH, PROC7;
+    TOKEN_PRIVILEGES tp;
+    bool ret = false;
+
+    PROC7 = GetCurrentProcess();
+    if (OpenProcessToken(PROC7, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &TH))
+    {
+        if (LookupPrivilegeValue(NULL, TEXT("SeLockMemoryPrivilege"), &tp.Privileges[0].Luid))
+        {
+            tp.PrivilegeCount = 1;
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            if (AdjustTokenPrivileges(TH, FALSE, &tp, 0, NULL, 0))
+            {
+                if (GetLastError() != ERROR_NOT_ALL_ASSIGNED)
+                    ret = true;
+            }
+        }
+        CloseHandle(TH);
+    }
+    return ret;
+}
+
+
+void Try_Get_LockMemory_Privileges()
+{
+    use_large_pages = 0;
+
+    if (Options["Large Pages"] == false)    
+        return;
+
+    if (got_privileges == -1)
+    {
+        if (Get_LockMemory_Privileges() == true)
+            got_privileges = 1;
+        else
+        {
+            sync_cout << "No Privilege for Large Pages" << sync_endl;
+            got_privileges = 0;
+        }
+    }
+
+    if (got_privileges == 0)      
+        return;
+
+    use_large_pages = 1;        
+}
 
 /// TTEntry::save populates the TTEntry with a new node's data, possibly
 /// overwriting an old position. Update is not atomic and can be racy.
@@ -65,10 +118,69 @@ void TranspositionTable::resize(size_t mbSize) {
 
   Threads.main()->wait_for_search_finished();
 
-  clusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
+  if (mbSize == 0)
+      mbSize = mbSize_last_used;
 
-  free(mem);
-  mem = malloc(clusterCount * sizeof(Cluster) + CacheLineSize - 1);
+  if (mbSize == 0)
+      return;
+
+  mbSize_last_used = mbSize;
+
+  Try_Get_LockMemory_Privileges();
+
+  size_t newClusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
+
+  if (newClusterCount == clusterCount)
+  {
+      if ((use_large_pages == 1) && (large_pages_used))      
+          return;
+      if ((use_large_pages == 0) && (large_pages_used == false))
+          return;
+  }
+
+  clusterCount = newClusterCount;
+ 
+  if (use_large_pages < 1)
+  {
+      if (mem != NULL)
+      {
+          if (large_pages_used)
+              VirtualFree(mem, 0, MEM_RELEASE);
+          else          
+              free(mem);
+      }
+      uint64_t memsize = clusterCount * sizeof(Cluster) + CacheLineSize - 1;
+      mem = calloc(memsize, 1);
+      large_pages_used = false;
+  }
+  else
+  {
+      if (mem != NULL)
+      {
+          if (large_pages_used)
+              VirtualFree(mem, 0, MEM_RELEASE);
+          else
+              free(mem);
+      }
+
+      int64_t memsize = clusterCount * sizeof(Cluster);
+      mem = VirtualAlloc(NULL, memsize, MEM_LARGE_PAGES | MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+      if (mem == NULL)
+      {
+          std::cerr << "Failed to allocate " << mbSize
+              << "MB Large Page Memory for transposition table, switching to default" << std::endl;
+
+          use_large_pages = 0;
+          memsize = clusterCount * sizeof(Cluster) + CacheLineSize - 1;
+          mem = malloc(memsize);
+          large_pages_used = false;
+      }
+      else
+      {
+          sync_cout << "LargePages " << (memsize >> 20) << " Mb" << sync_endl;
+          large_pages_used = true;
+      }     
+  }
 
   if (!mem)
   {
