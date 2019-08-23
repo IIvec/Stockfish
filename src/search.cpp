@@ -64,7 +64,7 @@ namespace {
   // Razor and futility margins
   constexpr int RazorMargin = 661;
   Value futility_margin(Depth d, bool improving) {
-    return Value((168 - 51 * improving) * d / ONE_PLY);
+    return Value(198 * (d / ONE_PLY - improving));
   }
 
   // Reductions lookup tables, initialized at startup
@@ -1086,7 +1086,8 @@ moves_loop: // When in check, search starts from here
           &&  moveCount > 1 + 3 * rootNode
           && (  !captureOrPromotion
               || moveCountPruning
-              || ss->staticEval + PieceValue[EG][pos.captured_piece()] <= alpha))
+              || ss->staticEval + PieceValue[EG][pos.captured_piece()] <= alpha
+              || cutNode))
       {
           Depth r = reduction(improving, depth, moveCount);
 
