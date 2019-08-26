@@ -23,9 +23,9 @@
 
 ### Executable name
 ifeq ($(COMP),mingw)
-EXE = stockfish.exe
+EXE = corchess.exe
 else
-EXE = stockfish
+EXE = corchess
 endif
 
 ### Installation dir definitions
