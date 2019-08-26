@@ -482,7 +482,10 @@ void Thread::search() {
                   ++failedHighCnt;
               }
               else
+              {
+                  ++rootMoves[pvIdx].bestMoveCount;
                   break;
+              }
 
               delta1 += delta1 / 4 + 5;
               delta2 += delta2 / 4 + 5;
@@ -810,7 +813,8 @@ namespace {
         && (ss-1)->currentMove != MOVE_NULL
         && (ss-1)->statScore < 22661
         &&  eval >= beta
-        &&  ss->staticEval >= beta - int(320 * log(depth / ONE_PLY)) + 500
+        &&  eval >= ss->staticEval
+        &&  ss->staticEval >= beta - int(320 * log(depth / ONE_PLY)) + 500 - improving * 30
         && !excludedMove
         &&  thisThread->selDepth + 5 > thisThread->rootDepth / ONE_PLY
         &&  pos.non_pawn_material(us) > BishopValueMg
@@ -1083,7 +1087,8 @@ moves_loop: // When in check, search starts from here
       // Step 16. Reduced depth search (LMR). If the move fails high it will be
       // re-searched at full depth.
       if (    depth >= 3 * ONE_PLY
-          &&  moveCount > 1 + 3 * rootNode
+          &&  moveCount > 1 + 2 * rootNode
+          && (!rootNode || thisThread->best_move_count(move) == 0)
           && (  !captureOrPromotion
               || moveCountPruning
               || ss->staticEval + PieceValue[EG][pos.captured_piece()] <= alpha
