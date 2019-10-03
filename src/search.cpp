@@ -85,9 +85,8 @@ namespace {
   }
 
   // Add a small random component to draw evaluations to avoid 3fold-blindness
-  Value value_draw(Depth depth, Thread* thisThread) {
-    return depth < 4 * ONE_PLY ? VALUE_DRAW
-                               : VALUE_DRAW + Value(2 * (thisThread->nodes & 1) - 1);
+  Value value_draw(Thread* thisThread) {
+    return VALUE_DRAW + Value(2 * (thisThread->nodes & 1) - 1);
   }
 
   // Skill structure is used to implement strength limit
@@ -194,7 +193,7 @@ void Search::init() {
       for (int d = 1; d < 128; ++d)
           for (int mc = 1; mc < 64; ++mc)
           {
-              double r = 0.22 * d * (1.0 - exp(-8.0 / d)) * log(mc);
+              double r = 0.0094 * (23.4 + std::log(Threads.size()) / 2) * d * (1.0 - exp(-8.0 / d)) * log(mc);
 
               Reductions[imp][d][mc] = std::round(r);
 
@@ -585,7 +584,7 @@ namespace {
         && !rootNode
         && pos.has_game_cycle(ss->ply))
     {
-        alpha = value_draw(depth, pos.this_thread());
+        alpha = value_draw(pos.this_thread());
         if (alpha >= beta)
             return alpha;
     }
@@ -635,7 +634,7 @@ namespace {
             || pos.is_draw(ss->ply)
             || ss->ply >= MAX_PLY)
             return (ss->ply >= MAX_PLY && !inCheck) ? evaluate(pos)
-                                                    : value_draw(depth, pos.this_thread());
+                                                    : value_draw(pos.this_thread());
 
         // Step 3. Mate distance pruning. Even if we mate at the next move our score
         // would be at best mate_in(ss->ply+1), but if alpha is already bigger because
@@ -774,7 +773,7 @@ namespace {
             ss->staticEval = eval = evaluate(pos);
 
         if (eval == VALUE_DRAW)
-            eval = value_draw(depth, thisThread);
+            eval = value_draw(thisThread);
 
         // Can ttValue be used as a better position evaluation?
         if (    ttValue != VALUE_NONE
@@ -1009,10 +1008,6 @@ moves_loop: // When in check, search starts from here
                && (pos.is_discovery_check_on_king(~us, move) || pos.see_ge(move)))
           extension = ONE_PLY;
 
-      // Castling extension
-      else if (type_of(move) == CASTLING)
-          extension = ONE_PLY;
-
       // Shuffle extension
       else if (   PvNode
                && pos.rule50_count() > 18
@@ -1024,6 +1019,10 @@ moves_loop: // When in check, search starts from here
       else if (   move == ss->killers[0]
                && pos.advanced_pawn_push(move)
                && pos.pawn_passed(us, to_sq(move)))
+          extension = ONE_PLY;
+
+      // Castling extension
+      if (type_of(move) == CASTLING)
           extension = ONE_PLY;
 
       // Calculate new depth for this move
