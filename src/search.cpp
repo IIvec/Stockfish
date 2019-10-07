@@ -818,7 +818,7 @@ namespace {
         &&  eval >= ss->staticEval
         &&  ss->staticEval >= beta - int(320 * log(depth)) + 500 - improving * 30
         && !excludedMove
-        &&  thisThread->selDepth + 5 > thisThread->rootDepth / ONE_PLY
+        &&  thisThread->selDepth + 5 > thisThread->rootDepth
         &&  pos.non_pawn_material(us) > BishopValueMg
         && (ss->ply >= thisThread->nmpMinPly || us != thisThread->nmpColor))
     {
