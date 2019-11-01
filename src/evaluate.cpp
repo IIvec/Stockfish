@@ -212,8 +212,8 @@ namespace {
   void Evaluation<T>::initialize() {
 
     constexpr Color     Them = (Us == WHITE ? BLACK : WHITE);
-    constexpr Direction Up   = (Us == WHITE ? NORTH : SOUTH);
-    constexpr Direction Down = (Us == WHITE ? SOUTH : NORTH);
+    constexpr Direction Up   = pawn_push(Us);
+    constexpr Direction Down = -Up;
     constexpr Bitboard LowRanks = (Us == WHITE ? Rank2BB | Rank3BB : Rank7BB | Rank6BB);
 
     const Square ksq = pos.square<KING>(Us);
@@ -234,15 +234,9 @@ namespace {
     attackedBy2[Us] = dblAttackByPawn | (attackedBy[Us][KING] & attackedBy[Us][PAWN]);
 
     // Init our king safety tables
-    kingRing[Us] = attackedBy[Us][KING];
-    if (relative_rank(Us, ksq) == RANK_1)
-        kingRing[Us] |= shift<Up>(kingRing[Us]);
-
-    if (file_of(ksq) == FILE_H)
-        kingRing[Us] |= shift<WEST>(kingRing[Us]);
-
-    else if (file_of(ksq) == FILE_A)
-        kingRing[Us] |= shift<EAST>(kingRing[Us]);
+    Square s = make_square(clamp(file_of(ksq), FILE_B, FILE_G),
+                           clamp(rank_of(ksq), RANK_2, RANK_7));
+    kingRing[Us] = PseudoAttacks[KING][s] | s;
 
     kingAttackersCount[Them] = popcount(kingRing[Us] & pe->pawn_attacks(Them));
     kingAttacksCount[Them] = kingAttackersWeight[Them] = 0;
@@ -257,7 +251,7 @@ namespace {
   Score Evaluation<T>::pieces() {
 
     constexpr Color     Them = (Us == WHITE ? BLACK : WHITE);
-    constexpr Direction Down = (Us == WHITE ? SOUTH : NORTH);
+    constexpr Direction Down = -pawn_push(Us);
     constexpr Bitboard OutpostRanks = (Us == WHITE ? Rank4BB | Rank5BB | Rank6BB
                                                    : Rank5BB | Rank4BB | Rank3BB);
     const Square* pl = pos.squares<Pt>(Us);
@@ -447,16 +441,16 @@ namespace {
     int kingFlankAttacks = popcount(b1) + popcount(b2);
 
     kingDanger +=        kingAttackersCount[Them] * kingAttackersWeight[Them]
-                 +  69 * kingAttacksCount[Them]
                  + 185 * popcount(kingRing[Us] & weak)
-                 - 100 * bool(attackedBy[Us][KNIGHT] & attackedBy[Us][KING])
-                 -  35 * bool(attackedBy[Us][BISHOP] & attackedBy[Us][KING])
                  + 148 * popcount(unsafeChecks)
                  +  98 * popcount(pos.blockers_for_king(Us))
-                 - 873 * !pos.count<QUEEN>(Them)
-                 -   6 * mg_value(score) / 8
-                 +       mg_value(mobility[Them] - mobility[Us])
+                 +  69 * kingAttacksCount[Them]
                  +   3 * kingFlankAttacks * kingFlankAttacks / 8
+                 +       mg_value(mobility[Them] - mobility[Us])
+                 - 873 * !pos.count<QUEEN>(Them)
+                 - 100 * bool(attackedBy[Us][KNIGHT] & attackedBy[Us][KING])
+                 -  35 * bool(attackedBy[Us][BISHOP] & attackedBy[Us][KING])
+                 -   6 * mg_value(score) / 8
                  -   7;
 
     // Transform the kingDanger units into a Score, and subtract it from the evaluation
@@ -483,7 +477,7 @@ namespace {
   Score Evaluation<T>::threats() const {
 
     constexpr Color     Them     = (Us == WHITE ? BLACK   : WHITE);
-    constexpr Direction Up       = (Us == WHITE ? NORTH   : SOUTH);
+    constexpr Direction Up       = pawn_push(Us);
     constexpr Bitboard  TRank3BB = (Us == WHITE ? Rank3BB : Rank6BB);
 
     Bitboard b, weak, defended, nonPawnEnemies, stronglyProtected, safe;
@@ -577,7 +571,7 @@ namespace {
   Score Evaluation<T>::passed() const {
 
     constexpr Color     Them = (Us == WHITE ? BLACK : WHITE);
-    constexpr Direction Up   = (Us == WHITE ? NORTH : SOUTH);
+    constexpr Direction Up   = pawn_push(Us);
 
     auto king_proximity = [&](Color c, Square s) {
       return std::min(distance(pos.square<KING>(c), s), 5);
@@ -595,7 +589,6 @@ namespace {
         assert(!(pos.pieces(Them, PAWN) & forward_file_bb(Us, s + Up)));
 
         int r = relative_rank(Us, s);
-        File f = file_of(s);
 
         Score bonus = PassedRank[r];
 
@@ -645,7 +638,7 @@ namespace {
             || (pos.pieces(PAWN) & (s + Up)))
             bonus = bonus / 2;
 
-        score += bonus - PassedFile * map_to_queenside(f);
+        score += bonus - PassedFile * map_to_queenside(file_of(s));
     }
 
     if (T)
@@ -669,7 +662,7 @@ namespace {
         return SCORE_ZERO;
 
     constexpr Color Them     = (Us == WHITE ? BLACK : WHITE);
-    constexpr Direction Down = (Us == WHITE ? SOUTH : NORTH);
+    constexpr Direction Down = -pawn_push(Us);
     constexpr Bitboard SpaceMask =
       Us == WHITE ? CenterFiles & (Rank2BB | Rank3BB | Rank4BB)
                   : CenterFiles & (Rank7BB | Rank6BB | Rank5BB);
@@ -754,7 +747,7 @@ namespace {
         else
             sf = std::min(sf, 36 + (pos.opposite_bishops() ? 2 : 7) * pos.count<PAWN>(strongSide));
 
-        sf = std::max(0, sf - (pos.rule50_count() - 12) / 4  );
+        sf = std::max(0, sf - (pos.rule50_count() - 12) / 4);
     }
 
     return ScaleFactor(sf);
