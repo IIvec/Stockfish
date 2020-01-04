@@ -65,9 +65,9 @@ namespace {
   constexpr uint64_t ttHitAverageResolution = 1024;
 
   // Razor and futility margins
-  constexpr int RazorMargin = 594;
+  constexpr int RazorMargin = 531;
   Value futility_margin(Depth d, bool improving) {
-    return Value(232 * (d - improving));
+    return Value(217 * (d - improving));
   }
 
   // Reductions lookup tables, initialized at startup
@@ -83,7 +83,7 @@ namespace {
 
   // History and stats update bonus, based on depth
   int stat_bonus(Depth d) {
-    return d > 17 ? -8 : 22 * d * d + 151 * d - 140;
+    return d > 15 ? -8 : 19 * d * d + 155 * d - 132;
   }
 
   // Add a small random component to draw evaluations to avoid 3fold-blindness
@@ -443,7 +443,7 @@ void Thread::search() {
               beta  = std::min(prevScore + delta2, VALUE_INFINITE);
 
               // Adjust contempt based on root move's previousScore (dynamic contempt)
-              int dct = ct + (ct ? (111 - ct / 2) * prevScore / (abs(prevScore) + 176) : 0);
+              int dct = ct + (ct ? (102 - ct / 2) * prevScore / (abs(prevScore) + 157) : 0);
 
               contempt = (us == WHITE ?  make_score(dct, dct / 2)
                                       : -make_score(dct, dct / 2));
@@ -542,13 +542,13 @@ void Thread::search() {
           && !Threads.stop
           && !mainThread->stopOnPonderhit)
       {
-          double fallingEval = (354 +  6 * (mainThread->previousScore - bestValue)
-                                    +  6 * (mainThread->iterValue[iterIdx]  - bestValue)) / 692.0;
+          double fallingEval = (332 +  6 * (mainThread->previousScore - bestValue)
+                                    +  6 * (mainThread->iterValue[iterIdx]  - bestValue)) / 704.0;
           fallingEval = clamp(fallingEval, 0.5, 1.5);
 
           // If the bestMove is stable over several iterations, reduce time accordingly
-          timeReduction = lastBestMoveDepth + 9 < completedDepth ? 1.97 : 0.98;
-          double reduction = (1.36 + mainThread->previousTimeReduction) / (2.29 * timeReduction);
+          timeReduction = lastBestMoveDepth + 9 < completedDepth ? 1.94 : 0.91;
+          double reduction = (1.41 + mainThread->previousTimeReduction) / (2.27 * timeReduction);
 
           // Use part of the gained time from a previous stable move for the current move
           for (Thread* th : Threads)
@@ -828,7 +828,7 @@ namespace {
 
     // Step 8. Futility pruning: child node (~30 Elo)
     if (   !PvNode
-        &&  depth < 7
+        &&  depth < 6
         &&  eval - futility_margin(depth, improving) >= beta
         &&  eval < VALUE_KNOWN_WIN) // Do not return unproven wins
         return eval;
@@ -836,7 +836,7 @@ namespace {
     // Step 9. Null move search with verification search (~40 Elo)
     if (   !PvNode
         && (ss-1)->currentMove != MOVE_NULL
-        && (ss-1)->statScore < 22661
+        && (ss-1)->statScore < 23405
         &&  eval >= beta
         &&  eval >= ss->staticEval
         &&  ss->staticEval >= beta - int(320 * log(depth)) + 500 - improving * 30
@@ -891,7 +891,7 @@ namespace {
         &&  depth >= 5
         &&  abs(beta) < VALUE_MATE_IN_MAX_PLY)
     {
-        Value raisedBeta = std::min(beta + 191 - 46 * improving, VALUE_INFINITE);
+        Value raisedBeta = std::min(beta + 189 - 45 * improving, VALUE_INFINITE);
         MovePicker mp(pos, ttMove, raisedBeta - ss->staticEval, &thisThread->captureHistory);
         int probCutCount = 0;
 
@@ -1015,14 +1015,14 @@ moves_loop: // When in check, search starts from here
               // Futility pruning: parent node (~2 Elo)
               if (   lmrDepth < 6
                   && !inCheck
-                  && ss->staticEval + 250 + 211 * lmrDepth <= alpha)
+                  && ss->staticEval + 255 + 182 * lmrDepth <= alpha)
                   continue;
 
               // Prune moves with negative SEE (~10 Elo)
-              if (!pos.see_ge(move, Value(-(31 - std::min(lmrDepth, 18)) * lmrDepth * lmrDepth)))
+              if (!pos.see_ge(move, Value(-(32 - std::min(lmrDepth, 18)) * lmrDepth * lmrDepth)))
                   continue;
           }
-          else if (!pos.see_ge(move, Value(-199) * depth)) // (~20 Elo)
+          else if (!pos.see_ge(move, Value(-194) * depth)) // (~20 Elo)
                   continue;
       }
 
@@ -1116,12 +1116,12 @@ moves_loop: // When in check, search starts from here
               || moveCountPruning
               || ss->staticEval + PieceValue[EG][pos.captured_piece()] <= alpha
               || cutNode
-              || thisThread->ttHitAverage < 384 * ttHitAverageResolution * ttHitAverageWindow / 1024))
+              || thisThread->ttHitAverage < 375 * ttHitAverageResolution * ttHitAverageWindow / 1024))
       {
           Depth r = reduction(improving, depth, moveCount);
 
           // Decrease reduction if the ttHit running average is large
-          if (thisThread->ttHitAverage > 544 * ttHitAverageResolution * ttHitAverageWindow / 1024)
+          if (thisThread->ttHitAverage > 500 * ttHitAverageResolution * ttHitAverageWindow / 1024)
               r--;
 
           // Reduction if other threads are searching this position.
@@ -1133,7 +1133,7 @@ moves_loop: // When in check, search starts from here
               r -= 2;
 
           // Decrease reduction if opponent's move count is high (~10 Elo)
-          if ((ss-1)->moveCount > 15)
+          if ((ss-1)->moveCount > 14)
               r--;
 
           // Decrease reduction if ttMove has been singularly extended
@@ -1161,7 +1161,7 @@ moves_loop: // When in check, search starts from here
                              + (*contHist[0])[movedPiece][to_sq(move)]
                              + (*contHist[1])[movedPiece][to_sq(move)]
                              + (*contHist[3])[movedPiece][to_sq(move)]
-                             - 4729;
+                             - 4926;
 
               // Reset statScore to zero if negative and most stats shows >= 0
               if (    ss->statScore < 0
@@ -1171,10 +1171,10 @@ moves_loop: // When in check, search starts from here
                   ss->statScore = 0;
 
               // Decrease/increase reduction by comparing opponent's stat score (~10 Elo)
-              if (ss->statScore >= -99 && (ss-1)->statScore < -116)
+              if (ss->statScore >= -102 && (ss-1)->statScore < -114)
                   r--;
 
-              else if ((ss-1)->statScore >= -117 && ss->statScore < -144)
+              else if ((ss-1)->statScore >= -116 && ss->statScore < -154)
                   r++;
 
               // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
@@ -1433,7 +1433,7 @@ moves_loop: // When in check, search starts from here
         if (PvNode && bestValue > alpha)
             alpha = bestValue;
 
-        futilityBase = bestValue + 153;
+        futilityBase = bestValue + 154;
     }
 
     const PieceToHistory* contHist[] = { (ss-1)->continuationHistory, (ss-2)->continuationHistory,
