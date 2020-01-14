@@ -196,7 +196,7 @@ void Search::init() {
       for (int d = 1; d < 128; ++d)
           for (int mc = 1; mc < 64; ++mc)
           {
-              double r = 0.009 * (23.4 + log(Threads.size()) / 2) * d * (1.0 - exp(-8.0 / d)) * log(mc);
+              double r = 0.009 * (23.4 + log(Threads.size())) * d * (1.0 - exp(-8.0 / d)) * log(mc);
 
               Reductions[imp][d][mc] = std::round(r);
 
