@@ -298,7 +298,7 @@ void MainThread::search() {
       }
   }
 
-  previousScore = bestThread->rootMoves[0].score;
+  bestPreviousScore = bestThread->rootMoves[0].score;
 
   // Send again PV info if we have a new best thread
   if (bestThread != this)
@@ -344,12 +344,12 @@ void Thread::search() {
 
   if (mainThread)
   {
-      if (mainThread->previousScore == VALUE_INFINITE)
+      if (mainThread->bestPreviousScore == VALUE_INFINITE)
           for (int i=0; i<4; ++i)
               mainThread->iterValue[i] = VALUE_ZERO;
       else
           for (int i=0; i<4; ++i)
-              mainThread->iterValue[i] = mainThread->previousScore;
+              mainThread->iterValue[i] = mainThread->bestPreviousScore;
   }
 
   size_t multiPV = Options["MultiPV"];
@@ -528,7 +528,7 @@ void Thread::search() {
           && !Threads.stop
           && !mainThread->stopOnPonderhit)
       {
-          double fallingEval = (332 +  6 * (mainThread->previousScore - bestValue)
+          double fallingEval = (332 +  6 * (mainThread->bestPreviousScore - bestValue)
                                     +  6 * (mainThread->iterValue[iterIdx]  - bestValue)) / 704.0;
           fallingEval = Utility::clamp(fallingEval, 0.5, 1.5);
 
