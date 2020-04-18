@@ -23,9 +23,9 @@
 
 ### Executable name
 ifeq ($(COMP),mingw)
-EXE = stockfish.exe
+EXE = crystal.exe
 else
-EXE = stockfish
+EXE = crystal
 endif
 
 ### Installation dir definitions
