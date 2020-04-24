@@ -38,7 +38,7 @@ matrix:
 
 branches:
   only:
-   - master
+   - crystal
 
 before_script:
   - cd src
@@ -54,7 +54,6 @@ script:
   - make clean && make -j2 ARCH=x86-64 optimize=no debug=yes build && ../tests/signature.sh $benchref
   - make clean && make -j2 ARCH=x86-32 optimize=no debug=yes build && ../tests/signature.sh $benchref
   - make clean && make -j2 ARCH=x86-32 build && ../tests/signature.sh $benchref
-
   #
   # Check perft and reproducible search
   - ../tests/perft.sh

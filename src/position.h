@@ -156,6 +156,8 @@ public:
   bool is_draw(int ply) const;
   bool has_game_cycle(int ply) const;
   bool has_repeated() const;
+  bool king_danger() const;
+  bool is_scb(Color c) const;
   int rule50_count() const;
   Score psq_score() const;
   Value non_pawn_material(Color c) const;

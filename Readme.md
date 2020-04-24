@@ -1,7 +1,25 @@
 ## Overview
 
-[![Build Status](https://travis-ci.org/official-stockfish/Stockfish.svg?branch=master)](https://travis-ci.org/official-stockfish/Stockfish)
-[![Build Status](https://ci.appveyor.com/api/projects/status/github/official-stockfish/Stockfish?branch=master&svg=true)](https://ci.appveyor.com/project/mcostalba/stockfish/branch/master)
+[![Build Status](https://travis-ci.org/jhellis3/Stockfish.svg?branch=crystal)](https://travis-ci.org/jhellis3/Stockfish)
+[![Build status](https://ci.appveyor.com/api/projects/status/r6qwl1mnufng39e1/branch/crystal?svg=true)](https://ci.appveyor.com/project/jhellis3/stockfish/branch/crystal)
+
+Crystal is a UCI chess engine derived from [Stockfish](https://stockfishchess.org).
+
+Crystal seeks to address the following issues where chess engines often have trouble:
+
+    1) Positional or tactical blindness due to over reductions or over pruning.
+    2) Draw blindess due to the move horizon (50 move rule).
+    3) Displayed PV reliability.
+
+A few examples of what Crystal can do:
+
+    1) (Ba4+) 3B4/1r2p3/r2p1p2/bkp1P1p1/1p1P1PPp/p1P4P/PP1K4/3B4 w - -
+    2) (Draw) 4K1bn/5p2/5PpB/6P1/3k4/8/8/7q w - -
+    3) (f6)   rk6/pP1p2p1/B7/3K1P2/8/8/7b/8 w - -
+    4) (Rd3)  8/5K2/3p3p/3p3P/pp1P4/rkb1R3/p1p3P1/n1B2B2 w - -
+    5) (Bf7)  4B2k/1p5p/bp5P/1p4p1/qp4P1/pp6/1r4P1/B1K5 w - -
+    6) (b4)   3K4/1p1B4/bB1k4/rpR1p3/2ppppp1/8/RPPPPP2/r1n5 w - -
+    7) (Draw) k7/P7/8/P7/2KB4/4B3/8/8 b - -
 
 [Stockfish](https://stockfishchess.org) is a free, powerful UCI chess engine
 derived from Glaurung 2.1. It is not a complete chess program and requires a
