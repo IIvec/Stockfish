@@ -608,7 +608,7 @@ namespace {
     Move ttMove, move, excludedMove, bestMove;
     Depth extension, newDepth;
     Value bestValue, value, ttValue, eval;
-    bool ttHit, ttPv, inCheck, givesCheck, improving, didLMR, priorCapture, isMate, gameCycle;
+    bool ttHit, ttPv, givesCheck, improving, didLMR, priorCapture, isMate, gameCycle;
     bool captureOrPromotion, doFullDepthSearch, moveCountPruning, ttCapture, singularLMR, kingDanger;
     Piece movedPiece;
     int moveCount, captureCount, quietCount, rootDepth;
@@ -1007,7 +1007,7 @@ moves_loop: // When in check, search starts from here
       if (isMate)
       {
           ss->currentMove = move;
-          ss->continuationHistory = &thisThread->continuationHistory[inCheck][priorCapture][movedPiece][to_sq(move)];
+          ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck][priorCapture][movedPiece][to_sq(move)];
           value = mate_in(ss->ply+1);
 
           if (PvNode && (moveCount == 1 || (value > alpha && (rootNode || value < beta))))
@@ -1511,7 +1511,7 @@ moves_loop: // When in check, search starts from here
         futilityBase = bestValue + 154;
     }
 
-    if (gameCycle && !inCheck)
+    if (gameCycle && !ss->inCheck)
         ss->staticEval = bestValue = ss->staticEval * std::max(0, (100 - pos.rule50_count())) / 100;
 
     const PieceToHistory* contHist[] = { (ss-1)->continuationHistory, (ss-2)->continuationHistory,
@@ -1540,7 +1540,7 @@ moves_loop: // When in check, search starts from here
       if (!PvNode)
       {
          // Futility pruning
-         if (   !inCheck
+         if (   !ss->inCheck
              && !givesCheck
              &&  futilityBase > -VALUE_KNOWN_WIN
              && !pos.advanced_pawn_push(move))
@@ -1563,13 +1563,13 @@ moves_loop: // When in check, search starts from here
          }
 
          // Detect non-capture evasions that are candidates to be pruned
-         evasionPrunable =    inCheck
+         evasionPrunable =    ss->inCheck
                           &&  (depth != 0 || moveCount > 2)
                           &&  bestValue > VALUE_TB_LOSS_IN_MAX_PLY
                           && !pos.capture(move);
 
          // Don't search moves with negative SEE values
-         if (  (!inCheck || evasionPrunable) && !pos.see_ge(move))
+         if (  (!ss->inCheck || evasionPrunable) && !pos.see_ge(move))
              continue;
       }
 
