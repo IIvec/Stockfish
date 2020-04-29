@@ -60,11 +60,13 @@ void init(OptionsMap& o) {
   constexpr int MaxHashMB = Is64Bit ? 131072 : 2048;
 
   o["Debug Log File"]        << Option("", on_logger);
-  o["Contempt"]              << Option(24, -100, 100);
-  o["Analysis Contempt"]     << Option("Both var Off var White var Black var Both", "Both");
+  o["Contempt"]              << Option(0, -100, 100);
+  o["Dynamic Contempt"]      << Option(false);
+  o["Analysis Contempt"]     << Option("Off var Off var White var Black var Both", "Off");
   o["Threads"]               << Option(1, 1, 512, on_threads);
   o["Hash"]                  << Option(16, 1, MaxHashMB, on_hash_size);
   o["Clear Hash"]            << Option(on_clear_hash);
+  o["Clean Search"]          << Option(false);
   o["Ponder"]                << Option(false);
   o["MultiPV"]               << Option(1, 1, 500);
   o["Skill Level"]           << Option(20, 0, 20);
