@@ -138,7 +138,7 @@ const string engine_info(bool to_uci) {
   string month, day, year;
   stringstream ss, date(__DATE__); // From compiler, format is "Sep 21 2008"
 
-  ss << "Stockfish " << Version << setfill('0');
+  ss << "CorChess 6.0 " << Version << setfill('0');
 
   if (Version.empty())
   {
@@ -147,7 +147,7 @@ const string engine_info(bool to_uci) {
   }
 
   ss << (to_uci  ? "\nid author ": " by ")
-     << "the Stockfish developers (see AUTHORS file)";
+     << "I. Ivec";
 
   return ss.str();
 }

@@ -58,7 +58,7 @@ void init(OptionsMap& o) {
   constexpr int MaxHashMB = Is64Bit ? 33554432 : 2048;
 
   o["Debug Log File"]        << Option("", on_logger);
-  o["Contempt"]              << Option(24, -100, 100);
+  o["Contempt"]              << Option(12, -100, 100);
   o["Analysis Contempt"]     << Option("Both var Off var White var Black var Both", "Both");
   o["Threads"]               << Option(1, 1, 512, on_threads);
   o["Hash"]                  << Option(16, 1, MaxHashMB, on_hash_size);
@@ -78,7 +78,7 @@ void init(OptionsMap& o) {
   o["SyzygyProbeDepth"]      << Option(1, 1, 100);
   o["Syzygy50MoveRule"]      << Option(true);
   o["SyzygyProbeLimit"]      << Option(7, 0, 7);
-  o["Use NNUE"]              << Option(false, on_use_NNUE);
+  o["Use NNUE"]              << Option(true, on_use_NNUE);
   o["EvalFile"]              << Option("nn-112bb1c8cdb5.nnue", on_eval_file);
 }
 
