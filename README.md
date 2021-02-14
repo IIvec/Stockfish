@@ -29,11 +29,10 @@ This distribution of Stockfish consists of the following files:
     that can be used to compile Stockfish on Unix-like systems.
 
   * a file with the .nnue extension, storing the neural network for the NNUE 
-    evaluation. Binary distributions will have this file embedded.
+    evaluation.
 
 Note: to use the NNUE evaluation, the additional data file with neural network parameters
-needs to be available. Normally, this file is already embedded in the binary or it can be downloaded.
-The filename for the default (recommended) net can be found as the default
+needs to be downloaded. The filename for the default net can be found as the default
 value of the `EvalFile` UCI option, with the format `nn-[SHA256 first 12 digits].nnue`
 (for instance, `nn-c157e0a5755b.nnue`). This file can be downloaded from
 ```
@@ -62,14 +61,11 @@ Currently, Stockfish has the following UCI options:
 
   * #### Use NNUE
     Toggle between the NNUE and classical evaluation functions. If set to "true",
-    the network parameters must be available to load from file (see also EvalFile),
-    if they are not embedded in the binary.
+    the network parameters must be available to load from file (see also EvalFile).
 
   * #### EvalFile
     The name of the file of the NNUE evaluation parameters. Depending on the GUI the
-    filename might have to include the full path to the folder/directory that contains the file.
-    Other locations, such as the directory that contains the binary and the working directory,
-    are also searched.
+    filename should include the full path to the folder/directory that contains the file.
 
   * #### UCI_AnalyseMode
     An option handled by your GUI.
