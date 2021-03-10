@@ -28,8 +28,10 @@
 
 #include "types.h"
 
-const std::string engine_info(bool to_uci = false);
-const std::string compiler_info();
+namespace Stockfish {
+
+std::string engine_info(bool to_uci = false);
+std::string compiler_info();
 void prefetch(void* addr);
 void start_logger(const std::string& fname);
 void* std_aligned_alloc(size_t alignment, size_t size);
@@ -137,5 +139,7 @@ inline uint64_t mul_hi64(uint64_t a, uint64_t b) {
 namespace WinProcGroup {
   void bindThisThread(size_t idx);
 }
+
+} // namespace Stockfish
 
 #endif // #ifndef MISC_H_INCLUDED
