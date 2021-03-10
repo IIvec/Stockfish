@@ -31,6 +31,8 @@
 #include "thread.h"
 #include "uci.h"
 
+namespace Stockfish {
+
 namespace Eval {
 
   bool useNNUE;
@@ -1070,3 +1072,5 @@ std::string Eval::trace(const Position& pos) {
 
   return ss.str();
 }
+
+} // namespace Stockfish
