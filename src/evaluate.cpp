@@ -181,11 +181,12 @@ namespace {
     S(0, 0), S(3, 44), S(37, 68), S(42, 60), S(0, 39), S(58, 43)
   };
 
+  constexpr Value CorneredBishop = Value(50);
+
   // Assorted bonuses and penalties
   constexpr Score UncontestedOutpost  = S(  1, 10);
   constexpr Score BishopOnKingRing    = S( 24,  0);
   constexpr Score BishopXRayPawns     = S(  4,  5);
-  constexpr Score CorneredBishop      = S( 50, 50);
   constexpr Score FlankAttacks        = S(  8,  0);
   constexpr Score Hanging             = S( 69, 36);
   constexpr Score KnightOnQueen       = S( 16, 11);
@@ -320,7 +321,8 @@ namespace {
 
     attackedBy[Us][Pt] = 0;
 
-    while (b1) {
+    while (b1)
+    {
         Square s = pop_lsb(b1);
 
         // Find attacked squares, including x-ray attacks for bishops and rooks
@@ -401,9 +403,8 @@ namespace {
                 {
                     Direction d = pawn_push(Us) + (file_of(s) == FILE_A ? EAST : WEST);
                     if (pos.piece_on(s + d) == make_piece(Us, PAWN))
-                        score -= !pos.empty(s + d + pawn_push(Us))                ? CorneredBishop * 4
-                                : pos.piece_on(s + d + d) == make_piece(Us, PAWN) ? CorneredBishop * 2
-                                                                                  : CorneredBishop;
+                        score -= !pos.empty(s + d + pawn_push(Us)) ? 4 * make_score(CorneredBishop, CorneredBishop)
+                                                                   : 3 * make_score(CorneredBishop, CorneredBishop);
                 }
             }
         }
@@ -962,46 +963,43 @@ make_v:
     return v;
   }
 
-  // specifically correct for cornered bishops to fix FRC with NNUE.
+
+  /// Fisher Random Chess: correction for cornered bishops, to fix chess960 play with NNUE
+
   Value fix_FRC(const Position& pos) {
 
-    Value bAdjust = Value(0);
+    constexpr Bitboard Corners =  1ULL << SQ_A1 | 1ULL << SQ_H1 | 1ULL << SQ_A8 | 1ULL << SQ_H8;
 
-    constexpr Value p1=Value(209), p2=Value(136), p3=Value(148);
+    if (!(pos.pieces(BISHOP) & Corners))
+        return VALUE_ZERO;
 
-    Color Us = pos.side_to_move();
-    if (   (pos.pieces(Us, BISHOP) & relative_square(Us, SQ_A1))
-        && (pos.pieces(Us, PAWN) & relative_square(Us, SQ_B2)))
-    {
-        bAdjust      -= !pos.empty(relative_square(Us,SQ_B3))                            ? p1
-                       : pos.piece_on(relative_square(Us,SQ_C3)) == make_piece(Us, PAWN) ? p2
-                                                                                         : p3;
-    }
-    if (   (pos.pieces(Us, BISHOP) & relative_square(Us, SQ_H1))
-        && (pos.pieces(Us, PAWN) & relative_square(Us, SQ_G2)))
-    {
-        bAdjust      -= !pos.empty(relative_square(Us,SQ_G3))                            ? p1
-                       : pos.piece_on(relative_square(Us,SQ_F3)) == make_piece(Us, PAWN) ? p2
-                                                                                         : p3;
-    }
-    if (   (pos.pieces(~Us, BISHOP) & relative_square(Us, SQ_A8))
-        && (pos.pieces(~Us, PAWN) & relative_square(Us, SQ_B7)))
-    {
-        bAdjust      += !pos.empty(relative_square(Us,SQ_B6))                             ? p1
-                       : pos.piece_on(relative_square(Us,SQ_C6)) == make_piece(~Us, PAWN) ? p2
-                                                                                          : p3;
-    }
-    if (   (pos.pieces(~Us, BISHOP) & relative_square(Us, SQ_H8))
-        && (pos.pieces(~Us, PAWN) & relative_square(Us, SQ_G7)))
-    {
-        bAdjust      += !pos.empty(relative_square(Us,SQ_G6))                             ? p1
-                       : pos.piece_on(relative_square(Us,SQ_F6)) == make_piece(~Us, PAWN) ? p2
-                                                                                          : p3;
-    }
-    return bAdjust;
+    int correction = 0;
+
+    if (   pos.piece_on(SQ_A1) == W_BISHOP
+        && pos.piece_on(SQ_B2) == W_PAWN)
+        correction += !pos.empty(SQ_B3) ? -CorneredBishop * 4
+                                        : -CorneredBishop * 3;
+
+    if (   pos.piece_on(SQ_H1) == W_BISHOP
+        && pos.piece_on(SQ_G2) == W_PAWN)
+        correction += !pos.empty(SQ_G3) ? -CorneredBishop * 4
+                                        : -CorneredBishop * 3;
+
+    if (   pos.piece_on(SQ_A8) == B_BISHOP
+        && pos.piece_on(SQ_B7) == B_PAWN)
+        correction += !pos.empty(SQ_B6) ? CorneredBishop * 4
+                                        : CorneredBishop * 3;
+
+    if (   pos.piece_on(SQ_H8) == B_BISHOP
+        && pos.piece_on(SQ_G7) == B_PAWN)
+        correction += !pos.empty(SQ_G6) ? CorneredBishop * 4
+                                        : CorneredBishop * 3;
+
+    return pos.side_to_move() == WHITE ?  Value(correction)
+                                       : -Value(correction);
   }
 
-} // namespace
+} // namespace Eval
 
 
 /// evaluate() is the evaluator for the outer world. It returns a static
@@ -1016,14 +1014,19 @@ Value Eval::evaluate(const Position& pos) {
   else
   {
       // Scale and shift NNUE for compatibility with search and classical evaluation
-      auto  adjusted_NNUE = [&](){
-         int mat = pos.non_pawn_material() + 2 * PawnValueMg * pos.count<PAWN>();
-         Value nnueValue = NNUE::evaluate(pos) * (641 + mat / 32 - 4 * pos.rule50_count()) / 1024 + Tempo;
+      auto  adjusted_NNUE = [&]()
+      {
+         int material = pos.non_pawn_material() + 2 * PawnValueMg * pos.count<PAWN>();
+         int scale =  641
+                    + material / 32
+                    - 4 * pos.rule50_count();
+
+         Value nnue = NNUE::evaluate(pos) * scale / 1024 + Tempo;
 
          if (pos.is_chess960())
-            nnueValue += fix_FRC(pos);
+             nnue += fix_FRC(pos);
 
-         return nnueValue;
+         return nnue;
       };
 
       // If there is PSQ imbalance use classical eval, with small probability if it is small
@@ -1041,7 +1044,8 @@ Value Eval::evaluate(const Position& pos) {
       // If the classical eval is small and imbalance large, use NNUE nevertheless.
       // For the case of opposite colored bishops, switch to NNUE eval with
       // small probability if the classical eval is less than the threshold.
-      if (   largePsq && !strongClassical
+      if (   largePsq
+          && !strongClassical
           && (   abs(v) * 16 < NNUEThreshold2 * r50
               || (   pos.opposite_bishops()
                   && abs(v) * 16 < (NNUEThreshold1 + pos.non_pawn_material() / 64) * r50
