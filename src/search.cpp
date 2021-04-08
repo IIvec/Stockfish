@@ -189,13 +189,15 @@ namespace {
 
 } // namespace
 
+int redam = 500;
+TUNE(redam);
 
 /// Search::init() is called at startup to initialize various lookup tables
 
 void Search::init() {
 
   for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int((21.3 + 2 * std::log(Threads.size())) * std::log(i + 0.25 * std::log(i)));
+      Reductions[i] = int((redam/10.0 + 2 * std::log(Threads.size())) * std::log(i + 0.25 * std::log(i)));
 }
 
 
