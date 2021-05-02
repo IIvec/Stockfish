@@ -166,7 +166,7 @@ namespace {
   uint64_t perft(Position& pos, Depth depth) {
 
     StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::kCacheLineSize);
+    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     uint64_t cnt, nodes = 0;
     const bool leaf = (depth == 2);
@@ -604,7 +604,7 @@ namespace {
 
     Move pv[MAX_PLY+1], capturesSearched[32], quietsSearched[64];
     StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::kCacheLineSize);
+    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
     Key posKey;
@@ -1138,6 +1138,8 @@ moves_loop: // When in check, search starts from here
           {
               extension = 1;
               singularQuietLMR = !ttCapture;
+              if (!PvNode && value < singularBeta - 140)
+                  extension = 2;
           }
 
           // Multi-cut pruning
@@ -1160,11 +1162,6 @@ moves_loop: // When in check, search starts from here
                   return beta;
           }
       }
-
-      // Check extension (~2 Elo)
-      else if (    givesCheck
-               && (pos.is_discovered_check_on_king(~us, move) || pos.see_ge(move)))
-          extension = 1;
 
       // Add extension to new depth
       newDepth += extension;
@@ -1193,7 +1190,8 @@ moves_loop: // When in check, search starts from here
               || ss->staticEval + PieceValue[EG][pos.captured_piece()] <= alpha
               || cutNode
               || (!PvNode && !formerPv && captureHistory[movedPiece][to_sq(move)][type_of(pos.captured_piece())] < 3678)
-              || thisThread->ttHitAverage < 432 * TtHitAverageResolution * TtHitAverageWindow / 1024))
+              || thisThread->ttHitAverage < 432 * TtHitAverageResolution * TtHitAverageWindow / 1024)
+          && (!PvNode || ss->ply > 1 || thisThread->id() % 4 != 3))
       {
           Depth r = reduction(improving, depth, moveCount);
 
@@ -1466,7 +1464,7 @@ moves_loop: // When in check, search starts from here
 
     Move pv[MAX_PLY+1];
     StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::kCacheLineSize);
+    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     TTEntry* tte;
     Key posKey;
@@ -1972,7 +1970,7 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
 bool RootMove::extract_ponder_from_tt(Position& pos) {
 
     StateInfo st;
-    ASSERT_ALIGNED(&st, Eval::NNUE::kCacheLineSize);
+    ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
     bool ttHit;
 
