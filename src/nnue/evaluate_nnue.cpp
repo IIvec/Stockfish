@@ -36,10 +36,11 @@ namespace Stockfish::Eval::NNUE {
   LargePagePtr<FeatureTransformer> featureTransformer;
 
   // Evaluation function
-  AlignedPtr<Network> network;
+  AlignedPtr<Network> network[LayerStacks];
 
   // Evaluation function file name
   std::string fileName;
+  std::string netDescription;
 
   namespace Detail {
 
@@ -69,26 +70,45 @@ namespace Stockfish::Eval::NNUE {
     return reference.read_parameters(stream);
   }
 
+  // Write evaluation function parameters
+  template <typename T>
+  bool write_parameters(std::ostream& stream, const T& reference) {
+
+    write_little_endian<std::uint32_t>(stream, T::get_hash_value());
+    return reference.write_parameters(stream);
+  }
+
   }  // namespace Detail
 
   // Initialize the evaluation function parameters
   void initialize() {
 
     Detail::initialize(featureTransformer);
-    Detail::initialize(network);
+    for (std::size_t i = 0; i < LayerStacks; ++i)
+      Detail::initialize(network[i]);
   }
 
   // Read network header
-  bool read_header(std::istream& stream, std::uint32_t* hashValue, std::string* architecture)
+  bool read_header(std::istream& stream, std::uint32_t* hashValue, std::string* desc)
   {
     std::uint32_t version, size;
 
     version     = read_little_endian<std::uint32_t>(stream);
-    *hashValue = read_little_endian<std::uint32_t>(stream);
+    *hashValue  = read_little_endian<std::uint32_t>(stream);
     size        = read_little_endian<std::uint32_t>(stream);
     if (!stream || version != Version) return false;
-    architecture->resize(size);
-    stream.read(&(*architecture)[0], size);
+    desc->resize(size);
+    stream.read(&(*desc)[0], size);
+    return !stream.fail();
+  }
+
+  // Write network header
+  bool write_header(std::ostream& stream, std::uint32_t hashValue, const std::string& desc)
+  {
+    write_little_endian<std::uint32_t>(stream, Version);
+    write_little_endian<std::uint32_t>(stream, hashValue);
+    write_little_endian<std::uint32_t>(stream, desc.size());
+    stream.write(&desc[0], desc.size());
     return !stream.fail();
   }
 
@@ -96,12 +116,22 @@ namespace Stockfish::Eval::NNUE {
   bool read_parameters(std::istream& stream) {
 
     std::uint32_t hashValue;
-    std::string architecture;
-    if (!read_header(stream, &hashValue, &architecture)) return false;
+    if (!read_header(stream, &hashValue, &netDescription)) return false;
     if (hashValue != HashValue) return false;
     if (!Detail::read_parameters(stream, *featureTransformer)) return false;
-    if (!Detail::read_parameters(stream, *network)) return false;
+    for (std::size_t i = 0; i < LayerStacks; ++i)
+      if (!Detail::read_parameters(stream, *(network[i]))) return false;
     return stream && stream.peek() == std::ios::traits_type::eof();
+  }
+
+  // Write network parameters
+  bool write_parameters(std::ostream& stream) {
+
+    if (!write_header(stream, HashValue, netDescription)) return false;
+    if (!Detail::write_parameters(stream, *featureTransformer)) return false;
+    for (std::size_t i = 0; i < LayerStacks; ++i)
+      if (!Detail::write_parameters(stream, *(network[i]))) return false;
+    return (bool)stream;
   }
 
   // Evaluation function. Perform differential calculation.
@@ -128,10 +158,15 @@ namespace Stockfish::Eval::NNUE {
     ASSERT_ALIGNED(transformedFeatures, alignment);
     ASSERT_ALIGNED(buffer, alignment);
 
-    featureTransformer->transform(pos, transformedFeatures);
-    const auto output = network->propagate(transformedFeatures, buffer);
+    const std::size_t bucket = (pos.count<ALL_PIECES>() - 1) / 4;
 
-    return static_cast<Value>(output[0] / OutputScale);
+    const auto [psqt, lazy] = featureTransformer->transform(pos, transformedFeatures, bucket);
+    if (lazy) {
+      return static_cast<Value>(psqt / OutputScale);
+    } else {
+      const auto output = network[bucket]->propagate(transformedFeatures, buffer);
+      return static_cast<Value>((output[0] + psqt) / OutputScale);
+    }
   }
 
   // Load the evaluation function file
@@ -145,6 +180,15 @@ namespace Stockfish::Eval::NNUE {
     const bool result = read_parameters(stream);
 
     return result;
+  }
+
+  // Save eval, to a file stream or a memory stream
+  bool save_eval(std::ostream& stream) {
+
+    if (fileName.empty())
+      return false;
+
+    return write_parameters(stream);
   }
 
 } // namespace Stockfish::Eval::NNUE
