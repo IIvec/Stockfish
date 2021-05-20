@@ -18,6 +18,7 @@
 
 // Code for calculating NNUE evaluation function
 
+#include <fstream>
 #include <iostream>
 #include <set>
 
@@ -168,12 +169,17 @@ namespace Stockfish::Eval::NNUE {
     }
   }
 
-  // Load eval, from a file stream or a memory stream
-  bool load_eval(std::string name, std::istream& stream) {
+  // Load the evaluation function file
+  bool load_eval_file(const std::string& evalFile) {
 
     initialize();
-    fileName = name;
-    return read_parameters(stream);
+    fileName = evalFile;
+
+    std::ifstream stream(evalFile, std::ios::binary);
+
+    const bool result = read_parameters(stream);
+
+    return result;
   }
 
   // Save eval, to a file stream or a memory stream

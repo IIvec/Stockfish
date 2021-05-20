@@ -21,7 +21,6 @@
 #include <ostream>
 #include <sstream>
 
-#include "evaluate.h"
 #include "misc.h"
 #include "search.h"
 #include "thread.h"
@@ -61,7 +60,7 @@ void init(OptionsMap& o) {
   constexpr int MaxHashMB = Is64Bit ? 33554432 : 2048;
 
   o["Debug Log File"]        << Option("", on_logger);
-  o["Contempt"]              << Option(24, -100, 100);
+  o["Contempt"]              << Option(12, -100, 100);
   o["Analysis Contempt"]     << Option("Both var Off var White var Black var Both", "Both");
   o["Threads"]               << Option(1, 1, 512, on_threads);
   o["Hash"]                  << Option(16, 1, MaxHashMB, on_hash_size);
@@ -82,7 +81,9 @@ void init(OptionsMap& o) {
   o["Syzygy50MoveRule"]      << Option(true);
   o["SyzygyProbeLimit"]      << Option(7, 0, 7);
   o["Use NNUE"]              << Option(true, on_use_NNUE);
-  o["EvalFile"]              << Option(EvalFileDefaultName, on_eval_file);
+  // The default must follow the format nn-[SHA256 first 12 digits].nnue
+  // for the build process (profile-build and fishtest) to work.
+  o["EvalFile"]              << Option("nn-62ef826d1a6d.nnue", on_eval_file);
 }
 
 
