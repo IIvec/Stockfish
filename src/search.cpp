@@ -70,10 +70,11 @@ namespace {
   }
 
   // Reductions lookup table, initialized at startup
-  int Reductions[MAX_MOVES]; // [depth or moveNumber]
+  int DReductions[MAX_MOVES]; // [depth]
+  int MReductions[MAX_MOVES]; // [moveNumber]
 
   Depth reduction(bool i, Depth d, int mn) {
-    int r = Reductions[d] * Reductions[mn];
+    int r = DReductions[d] * MReductions[mn];
     return (r + 534) / 1024 + (!i && r > 904);
   }
 
@@ -151,8 +152,12 @@ namespace {
 
 void Search::init() {
 
+  double r = 21.3 + 2 * log(Threads.size());
   for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int((21.3 + 2 * std::log(Threads.size())) * std::log(i + 0.25 * std::log(i)));
+  {
+      DReductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
+      MReductions[i] = int(r * log(i + 0.25 * log(i)));
+  }
 }
 
 
@@ -256,7 +261,7 @@ void Thread::search() {
   // The latter is needed for statScores and killer initialization.
   Stack stack[MAX_PLY+10], *ss = stack+7;
   Move  pv[MAX_PLY+1];
-  Value bestValue, alpha, beta, delta;
+  Value bestValue, alpha, beta, delta1, delta2;
   Move  lastBestMove = MOVE_NONE;
   Depth lastBestMoveDepth = 0;
   MainThread* mainThread = (this == Threads.main() ? Threads.main() : nullptr);
@@ -270,7 +275,7 @@ void Thread::search() {
 
   ss->pv = pv;
 
-  bestValue = delta = alpha = -VALUE_INFINITE;
+  bestValue = delta1 = delta2 = alpha = -VALUE_INFINITE;
   beta = VALUE_INFINITE;
 
   if (mainThread)
@@ -363,12 +368,13 @@ void Thread::search() {
           if (rootDepth >= 4)
           {
               Value prev = rootMoves[pvIdx].previousScore;
-              delta = Value(17);
-              alpha = std::max(prev - delta,-VALUE_INFINITE);
-              beta  = std::min(prev + delta, VALUE_INFINITE);
+              delta1 = (prev < 0) ? Value(13 + abs(prev) / 20) : Value(13);
+              delta2 = (prev > 0) ? Value(13 + abs(prev) / 20) : Value(13);
+              alpha = std::max(prev - delta1,-VALUE_INFINITE);
+              beta  = std::min(prev + delta2, VALUE_INFINITE);
 
               // Adjust contempt based on root move's previousScore (dynamic contempt)
-              int dct = ct + (113 - ct / 2) * prev / (abs(prev) + 147);
+              int dct = ct + (ct ? (113 - ct / 2) * prev / (abs(prev) + 147) : 0);
 
               contempt = (us == WHITE ?  make_score(dct, dct / 2)
                                       : -make_score(dct, dct / 2));
@@ -410,7 +416,7 @@ void Thread::search() {
               if (bestValue <= alpha)
               {
                   beta = (alpha + beta) / 2;
-                  alpha = std::max(bestValue - delta, -VALUE_INFINITE);
+                  alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
 
                   failedHighCnt = 0;
                   if (mainThread)
@@ -418,13 +424,14 @@ void Thread::search() {
               }
               else if (bestValue >= beta)
               {
-                  beta = std::min(bestValue + delta, VALUE_INFINITE);
+                  beta = std::min(bestValue + delta2, VALUE_INFINITE);
                   ++failedHighCnt;
               }
               else
                   break;
 
-              delta += delta / 4 + 5;
+              delta1 += delta1 / 2;
+              delta2 += delta2 / 2;		   
 
               assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
           }
@@ -803,13 +810,14 @@ namespace {
         &&  eval >= ss->staticEval
         &&  ss->staticEval >= beta - 20 * depth - 22 * improving + 168 * ss->ttPv + 159
         && !excludedMove
-        &&  pos.non_pawn_material(us)
+        &&  thisThread->selDepth + 5 > thisThread->rootDepth
+        &&  pos.non_pawn_material(us) > BishopValueMg
         && (ss->ply >= thisThread->nmpMinPly || us != thisThread->nmpColor))
     {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth and value
-        Depth R = (1090 + 81 * depth) / 256 + std::min(int(eval - beta) / 205, 3);
+        Depth R = std::max(1, int(3.2 * log(depth)) + std::min(int(eval - beta) / 205, 3));
 
         ss->currentMove = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];

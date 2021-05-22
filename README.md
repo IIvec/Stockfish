@@ -61,14 +61,11 @@ For users, the following UCI options, which can typically be set via a GUI, are 
 
   * #### Use NNUE
     Toggle between the NNUE and classical evaluation functions. If set to "true",
-    the network parameters must be available to load from file (see also EvalFile),
-    if they are not embedded in the binary.
+    the network parameters must be available to load from file (see also EvalFile).
 
   * #### EvalFile
     The name of the file of the NNUE evaluation parameters. Depending on the GUI the
-    filename might have to include the full path to the folder/directory that contains the file.
-    Other locations, such as the directory that contains the binary and the working directory,
-    are also searched.
+    filename should include the full path to the folder/directory that contains the file.
 
   * #### UCI_AnalyseMode
     An option handled by your GUI.
