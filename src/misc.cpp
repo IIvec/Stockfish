@@ -145,7 +145,7 @@ string engine_info(bool to_uci) {
   string month, day, year;
   stringstream ss, date(__DATE__); // From compiler, format is "Sep 21 2008"
 
-  ss << "CorChess NNUE 1.3 " << Version << setfill('0');
+  ss << "CorChess NNUE 1.4 " << Version << setfill('0');
 
   if (Version.empty())
   {
