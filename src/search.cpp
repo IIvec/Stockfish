@@ -152,7 +152,7 @@ namespace {
 void Search::init() {
 
   for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int((21.3 + 2 * std::log(Threads.size())) * std::log(i + 0.25 * std::log(i)));
+      Reductions[i] = int(21.3 * std::log(i + 0.25 * std::log(i)));
 }
 
 
@@ -1121,7 +1121,7 @@ moves_loop: // When in check, search starts from here
       if (    depth >= 3
           &&  moveCount > 1 + 2 * rootNode
           && (  !captureOrPromotion
-              || cutNode
+              || (cutNode && (ss-1)->moveCount > 1)
               || (!PvNode && !formerPv))
           && (!PvNode || ss->ply > 1 || thisThread->id() % 4 != 3))
       {
