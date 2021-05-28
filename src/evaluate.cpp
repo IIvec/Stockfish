@@ -116,9 +116,9 @@ using namespace Trace;
 namespace {
 
   // Threshold for space evaluation
-  constexpr Value SpaceThreshold = Value(11551);
-  constexpr Value NNUEThreshold1 =   Value(682);
-  constexpr Value NNUEThreshold2 =   Value(176);
+  constexpr Value SpaceThreshold    = Value(11551);
+  constexpr Value NNUEThreshold1    =   Value(800);
+  constexpr Value NNUEThreshold2    =   Value(176);
 
   // KingAttackWeights[PieceType] contains king attack weights by piece type
   constexpr int KingAttackWeights[PIECE_TYPE_NB] = { 0, 0, 81, 52, 44, 10 };
@@ -1021,15 +1021,14 @@ Value Eval::evaluate(const Position& pos) {
       Value psq = Value(abs(eg_value(pos.psq_score())));
       int   r50 = 16 + pos.rule50_count();
       bool  largePsq = psq * 16 > (NNUEThreshold1 + pos.non_pawn_material() / 64) * r50;
-      bool  classical = largePsq;
 
       // Use classical evaluation for really low piece endgames.
       // One critical case is the draw for bishop + A/H file pawn vs naked king.
       bool lowPieceEndgame =   pos.non_pawn_material() == BishopValueMg
                             || (pos.non_pawn_material() < 2 * RookValueMg && pos.count<PAWN>() < 2);
 
-      v = classical || lowPieceEndgame ? Evaluation<NO_TRACE>(pos).value()
-                                       : adjusted_NNUE();
+      v = largePsq || lowPieceEndgame ? Evaluation<NO_TRACE>(pos).value()  // classical
+                                      : adjusted_NNUE();                   // NNUE
 
       // If the classical eval is small and imbalance large, use NNUE nevertheless.
       // For the case of opposite colored bishops, switch to NNUE eval with small

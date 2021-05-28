@@ -152,7 +152,7 @@ namespace {
 
 void Search::init() {
 
-  double r = 21.3 + log(Threads.size());
+  double r = 21.3;
   for (int i = 1; i < MAX_MOVES; ++i)
   {
       DReductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
@@ -1129,7 +1129,7 @@ moves_loop: // When in check, search starts from here
       if (    depth >= 3
           &&  moveCount > 1 + 2 * rootNode
           && (  !captureOrPromotion
-              || cutNode
+              || (cutNode && (ss-1)->moveCount > 1)
               || (!PvNode && !formerPv))
           && (!PvNode || ss->ply > 1 || thisThread->id() % 4 != 3))
       {
