@@ -962,6 +962,7 @@ moves_loop: // When in check, search starts from here
 
     value = bestValue;
     singularQuietLMR = moveCountPruning = false;
+    bool doubleExtension = false;
 
     // Indicate PvNodes that will probably fail low if the node was searched
     // at a depth equal or greater than the current depth, and the result of this search was a fail low.
@@ -1088,7 +1089,10 @@ moves_loop: // When in check, search starts from here
               if (   !PvNode
                   && value < singularBeta - 93
                   && ss->doubleExtensions < 3)
+              {
                   extension = 2;
+                  doubleExtension = true;
+              }
           }
 
           // Multi-cut pruning
@@ -1196,8 +1200,8 @@ moves_loop: // When in check, search starts from here
 
           // In general we want to cap the LMR depth search at newDepth. But if
           // reductions are really negative and movecount is low, we allow this move
-          // to be searched deeper than the first move.
-          Depth d = std::clamp(newDepth - r, 1, newDepth + (r < -1 && moveCount <= 5));
+          // to be searched deeper than the first move, unless ttMove was extended by 2.
+          Depth d = std::clamp(newDepth - r, 1, newDepth + (r < -1 && moveCount <= 5 && !doubleExtension));
 
           value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
 

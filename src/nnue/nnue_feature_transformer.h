@@ -24,18 +24,21 @@
 #include "nnue_common.h"
 #include "nnue_architecture.h"
 
-#include "../misc.h"
-
 #include <cstring> // std::memset()
 
 namespace Stockfish::Eval::NNUE {
+
+  using BiasType       = std::int16_t;
+  using WeightType     = std::int16_t;
+  using PSQTWeightType = std::int32_t;
 
   // If vector instructions are enabled, we update and refresh the
   // accumulator tile by tile such that each tile fits in the CPU's
   // vector registers.
   #define VECTOR
 
-  static_assert(PSQTBuckets == 8, "Assumed by the current choice of constants.");
+  static_assert(PSQTBuckets % 8 == 0,
+    "Per feature PSQT values cannot be processed at granularity lower than 8 at a time.");
 
   #ifdef USE_AVX512
   typedef __m512i vec_t;
@@ -49,8 +52,7 @@ namespace Stockfish::Eval::NNUE {
   #define vec_add_psqt_32(a,b) _mm256_add_epi32(a,b)
   #define vec_sub_psqt_32(a,b) _mm256_sub_epi32(a,b)
   #define vec_zero_psqt() _mm256_setzero_si256()
-  static constexpr IndexType NumRegs = 8; // only 8 are needed
-  static constexpr IndexType NumPsqtRegs = 1;
+  #define NumRegistersSIMD 32
 
   #elif USE_AVX2
   typedef __m256i vec_t;
@@ -64,8 +66,7 @@ namespace Stockfish::Eval::NNUE {
   #define vec_add_psqt_32(a,b) _mm256_add_epi32(a,b)
   #define vec_sub_psqt_32(a,b) _mm256_sub_epi32(a,b)
   #define vec_zero_psqt() _mm256_setzero_si256()
-  static constexpr IndexType NumRegs = 16;
-  static constexpr IndexType NumPsqtRegs = 1;
+  #define NumRegistersSIMD 16
 
   #elif USE_SSE2
   typedef __m128i vec_t;
@@ -79,8 +80,7 @@ namespace Stockfish::Eval::NNUE {
   #define vec_add_psqt_32(a,b) _mm_add_epi32(a,b)
   #define vec_sub_psqt_32(a,b) _mm_sub_epi32(a,b)
   #define vec_zero_psqt() _mm_setzero_si128()
-  static constexpr IndexType NumRegs = Is64Bit ? 16 : 8;
-  static constexpr IndexType NumPsqtRegs = 2;
+  #define NumRegistersSIMD (Is64Bit ? 16 : 8)
 
   #elif USE_MMX
   typedef __m64 vec_t;
@@ -94,8 +94,7 @@ namespace Stockfish::Eval::NNUE {
   #define vec_add_psqt_32(a,b) _mm_add_pi32(a,b)
   #define vec_sub_psqt_32(a,b) _mm_sub_pi32(a,b)
   #define vec_zero_psqt() _mm_setzero_si64()
-  static constexpr IndexType NumRegs = 8;
-  static constexpr IndexType NumPsqtRegs = 4;
+  #define NumRegistersSIMD 8
 
   #elif USE_NEON
   typedef int16x8_t vec_t;
@@ -109,13 +108,60 @@ namespace Stockfish::Eval::NNUE {
   #define vec_add_psqt_32(a,b) vaddq_s32(a,b)
   #define vec_sub_psqt_32(a,b) vsubq_s32(a,b)
   #define vec_zero_psqt() psqt_vec_t{0}
-  static constexpr IndexType NumRegs = 16;
-  static constexpr IndexType NumPsqtRegs = 2;
+  #define NumRegistersSIMD 16
 
   #else
   #undef VECTOR
 
   #endif
+
+
+  #ifdef VECTOR
+
+      // Compute optimal SIMD register count for feature transformer accumulation.
+
+      // We use __m* types as template arguments, which causes GCC to emit warnings
+      // about losing some attribute information. This is irrelevant to us as we
+      // only take their size, so the following pragma are harmless.
+      #pragma GCC diagnostic push
+      #pragma GCC diagnostic ignored "-Wignored-attributes"
+
+      template <typename SIMDRegisterType,
+                typename LaneType,
+                int      NumLanes,
+                int      MaxRegisters>
+      static constexpr int BestRegisterCount()
+      {
+          #define RegisterSize  sizeof(SIMDRegisterType)
+          #define LaneSize      sizeof(LaneType)
+
+          static_assert(RegisterSize >= LaneSize);
+          static_assert(MaxRegisters <= NumRegistersSIMD);
+          static_assert(MaxRegisters > 0);
+          static_assert(NumRegistersSIMD > 0);
+          static_assert(RegisterSize % LaneSize == 0);
+          static_assert((NumLanes * LaneSize) % RegisterSize == 0);
+
+          const int ideal = (NumLanes * LaneSize) / RegisterSize;
+          if (ideal <= MaxRegisters)
+            return ideal;
+
+          // Look for the largest divisor of the ideal register count that is smaller than MaxRegisters
+          for (int divisor = MaxRegisters; divisor > 1; --divisor)
+            if (ideal % divisor == 0)
+              return divisor;
+
+          return 1;
+      }
+
+      static constexpr int NumRegs     = BestRegisterCount<vec_t, WeightType, TransformedFeatureDimensions, NumRegistersSIMD>();
+      static constexpr int NumPsqtRegs = BestRegisterCount<psqt_vec_t, PSQTWeightType, PSQTBuckets, NumRegistersSIMD>();
+
+      #pragma GCC diagnostic pop
+
+  #endif
+
+
 
   // Input feature converter
   class FeatureTransformer {
@@ -150,23 +196,21 @@ namespace Stockfish::Eval::NNUE {
 
     // Read network parameters
     bool read_parameters(std::istream& stream) {
-      for (std::size_t i = 0; i < HalfDimensions; ++i)
-        biases[i] = read_little_endian<BiasType>(stream);
-      for (std::size_t i = 0; i < HalfDimensions * InputDimensions; ++i)
-        weights[i] = read_little_endian<WeightType>(stream);
-      for (std::size_t i = 0; i < PSQTBuckets * InputDimensions; ++i)
-        psqtWeights[i] = read_little_endian<PSQTWeightType>(stream);
+
+      read_little_endian<BiasType      >(stream, biases     , HalfDimensions                  );
+      read_little_endian<WeightType    >(stream, weights    , HalfDimensions * InputDimensions);
+      read_little_endian<PSQTWeightType>(stream, psqtWeights, PSQTBuckets    * InputDimensions);
+
       return !stream.fail();
     }
 
     // Write network parameters
     bool write_parameters(std::ostream& stream) const {
-      for (std::size_t i = 0; i < HalfDimensions; ++i)
-        write_little_endian<BiasType>(stream, biases[i]);
-      for (std::size_t i = 0; i < HalfDimensions * InputDimensions; ++i)
-        write_little_endian<WeightType>(stream, weights[i]);
-      for (std::size_t i = 0; i < PSQTBuckets * InputDimensions; ++i)
-        write_little_endian<PSQTWeightType>(stream, psqtWeights[i]);
+
+      write_little_endian<BiasType      >(stream, biases     , HalfDimensions                  );
+      write_little_endian<WeightType    >(stream, weights    , HalfDimensions * InputDimensions);
+      write_little_endian<PSQTWeightType>(stream, psqtWeights, PSQTBuckets    * InputDimensions);
+
       return !stream.fail();
     }
 
@@ -339,7 +383,7 @@ namespace Stockfish::Eval::NNUE {
       // of the estimated gain in terms of features to be added/subtracted.
       StateInfo *st = pos.state(), *next = nullptr;
       int gain = FeatureSet::refresh_cost(pos);
-      while (st->accumulator.state[perspective] == EMPTY)
+      while (st->previous && !st->accumulator.computed[perspective])
       {
         // This governs when a full feature refresh is needed and how many
         // updates are better than just one full refresh.
@@ -350,7 +394,7 @@ namespace Stockfish::Eval::NNUE {
         st = st->previous;
       }
 
-      if (st->accumulator.state[perspective] == COMPUTED)
+      if (st->accumulator.computed[perspective])
       {
         if (next == nullptr)
           return;
@@ -368,8 +412,8 @@ namespace Stockfish::Eval::NNUE {
             ksq, st2, perspective, removed[1], added[1]);
 
         // Mark the accumulators as computed.
-        next->accumulator.state[perspective] = COMPUTED;
-        pos.state()->accumulator.state[perspective] = COMPUTED;
+        next->accumulator.computed[perspective] = true;
+        pos.state()->accumulator.computed[perspective] = true;
 
         // Now update the accumulators listed in states_to_update[], where the last element is a sentinel.
         StateInfo *states_to_update[3] =
@@ -489,7 +533,7 @@ namespace Stockfish::Eval::NNUE {
       {
         // Refresh the accumulator
         auto& accumulator = pos.state()->accumulator;
-        accumulator.state[perspective] = COMPUTED;
+        accumulator.computed[perspective] = true;
         IndexList active;
         FeatureSet::append_active_indices(pos, perspective, active);
 
@@ -560,10 +604,6 @@ namespace Stockfish::Eval::NNUE {
       _mm_empty();
   #endif
     }
-
-    using BiasType = std::int16_t;
-    using WeightType = std::int16_t;
-    using PSQTWeightType = std::int32_t;
 
     alignas(CacheLineSize) BiasType biases[HalfDimensions];
     alignas(CacheLineSize) WeightType weights[HalfDimensions * InputDimensions];
