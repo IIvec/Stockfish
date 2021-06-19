@@ -106,7 +106,7 @@ namespace Trace {
     else
         os << scores[t][WHITE] << " | " << scores[t][BLACK];
 
-    os << " | " << scores[t][WHITE] - scores[t][BLACK] << "\n";
+    os << " | " << scores[t][WHITE] - scores[t][BLACK] << " |\n";
     return os;
   }
 }
@@ -1039,7 +1039,7 @@ Value Eval::evaluate(const Position& pos) {
 /// descriptions and values of each evaluation term. Useful for debugging.
 /// Trace scores are from white's point of view
 
-std::string Eval::trace(const Position& pos) {
+std::string Eval::trace(Position& pos) {
 
   if (pos.checkers())
       return "Final evaluation: none (in check)";
@@ -1056,39 +1056,48 @@ std::string Eval::trace(const Position& pos) {
   v = Evaluation<TRACE>(pos).value();
 
   ss << std::showpoint << std::noshowpos << std::fixed << std::setprecision(2)
-     << "     Term    |    White    |    Black    |    Total   \n"
-     << "             |   MG    EG  |   MG    EG  |   MG    EG \n"
-     << " ------------+-------------+-------------+------------\n"
-     << "    Material | " << Term(MATERIAL)
-     << "   Imbalance | " << Term(IMBALANCE)
-     << "       Pawns | " << Term(PAWN)
-     << "     Knights | " << Term(KNIGHT)
-     << "     Bishops | " << Term(BISHOP)
-     << "       Rooks | " << Term(ROOK)
-     << "      Queens | " << Term(QUEEN)
-     << "    Mobility | " << Term(MOBILITY)
-     << " King safety | " << Term(KING)
-     << "     Threats | " << Term(THREAT)
-     << "      Passed | " << Term(PASSED)
-     << "       Space | " << Term(SPACE)
-     << "    Winnable | " << Term(WINNABLE)
-     << " ------------+-------------+-------------+------------\n"
-     << "       Total | " << Term(TOTAL);
-
-  v = pos.side_to_move() == WHITE ? v : -v;
-
-  ss << "\nClassical evaluation: " << to_cp(v) << " (white side)\n";
+     << " Contributing terms for the classical eval:\n"
+     << "+------------+-------------+-------------+-------------+\n"
+     << "|    Term    |    White    |    Black    |    Total    |\n"
+     << "|            |   MG    EG  |   MG    EG  |   MG    EG  |\n"
+     << "+------------+-------------+-------------+-------------+\n"
+     << "|   Material | " << Term(MATERIAL)
+     << "|  Imbalance | " << Term(IMBALANCE)
+     << "|      Pawns | " << Term(PAWN)
+     << "|    Knights | " << Term(KNIGHT)
+     << "|    Bishops | " << Term(BISHOP)
+     << "|      Rooks | " << Term(ROOK)
+     << "|     Queens | " << Term(QUEEN)
+     << "|   Mobility | " << Term(MOBILITY)
+     << "|King safety | " << Term(KING)
+     << "|    Threats | " << Term(THREAT)
+     << "|     Passed | " << Term(PASSED)
+     << "|      Space | " << Term(SPACE)
+     << "|   Winnable | " << Term(WINNABLE)
+     << "+------------+-------------+-------------+-------------+\n"
+     << "|      Total | " << Term(TOTAL)
+     << "+------------+-------------+-------------+-------------+\n";
 
   if (Eval::useNNUE)
+      ss << '\n' << NNUE::trace(pos) << '\n';
+
+  ss << std::showpoint << std::showpos << std::fixed << std::setprecision(2) << std::setw(15);
+
+  v = pos.side_to_move() == WHITE ? v : -v;
+  ss << "\nClassical evaluation   " << to_cp(v) << " (white side)\n";
+  if (Eval::useNNUE)
   {
-      v = NNUE::evaluate(pos);
+      v = NNUE::evaluate(pos, false);
       v = pos.side_to_move() == WHITE ? v : -v;
-      ss << "\nNNUE evaluation:      " << to_cp(v) << " (white side)\n";
+      ss << "NNUE evaluation        " << to_cp(v) << " (white side)\n";
   }
 
   v = evaluate(pos);
   v = pos.side_to_move() == WHITE ? v : -v;
-  ss << "\nFinal evaluation:     " << to_cp(v) << " (white side)\n";
+  ss << "Final evaluation       " << to_cp(v) << " (white side)";
+  if (Eval::useNNUE)
+     ss << " [with scaled NNUE, hybrid, ...]";
+  ss << "\n";
 
   return ss.str();
 }
