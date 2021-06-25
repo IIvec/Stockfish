@@ -21,7 +21,6 @@
 #include <ostream>
 #include <sstream>
 
-#include "evaluate.h"
 #include "misc.h"
 #include "search.h"
 #include "thread.h"
@@ -80,7 +79,9 @@ void init(OptionsMap& o) {
   o["Syzygy50MoveRule"]      << Option(true);
   o["SyzygyProbeLimit"]      << Option(7, 0, 7);
   o["Use NNUE"]              << Option(true, on_use_NNUE);
-  o["EvalFile"]              << Option(EvalFileDefaultName, on_eval_file);
+  // The default must follow the format nn-[SHA256 first 12 digits].nnue
+  // for the build process (profile-build and fishtest) to work.
+  o["EvalFile"]              << Option("nn-190f102a22c3.nnue", on_eval_file);
 }
 
 
