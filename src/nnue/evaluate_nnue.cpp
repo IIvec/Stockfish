@@ -244,7 +244,7 @@ namespace Stockfish::Eval::NNUE {
 
     buffer[0] = (v < 0 ? '-' : v > 0 ? '+' : ' ');
 
-    int cp = (int)(std::abs(100.0 * double(v) / PawnValueEg));
+    int cp = std::abs(100 * v / PawnValueEg);
 
     if (cp >= 10000)
     {
@@ -273,7 +273,7 @@ namespace Stockfish::Eval::NNUE {
   static void format_cp_aligned_dot(Value v, char* buffer) {
     buffer[0] = (v < 0 ? '-' : v > 0 ? '+' : ' ');
 
-    int cp = (int)(std::abs(100.0 * double(v) / PawnValueEg));
+    int cp = std::abs(100 * v / PawnValueEg);
 
     if (cp >= 10000)
     {
