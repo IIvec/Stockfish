@@ -34,6 +34,7 @@
 #include "tt.h"
 #include "uci.h"
 #include "syzygy/tbprobe.h"
+#include "nnue/evaluate_nnue.h"
 
 namespace Stockfish {
 
@@ -57,6 +58,20 @@ using Eval::evaluate;
 using namespace Search;
 
 namespace {
+
+int nbnw[264] = {288,	21,	-19,	14,	40,	50,	25,	26,	-12,	-13,	75,	20,	32,	-53,	-22,	-25,	27,	25,	-18,	-18,	
+25,	-20,	-62,	9,	40,	16,	16,	-46,	-28,	-42,	-20,	-22,	27,	272,	12,	-51,	32,	11,	19,	34,	26,	-11,	-25,	
+14,	24,	14,	-21,	-11,	-27,	10,	18,	-16,	-14,	15,	-18,	-65,	9,	23,	14,	16,	15,	-12,	-17,	-9,	-12,	29,	
+333,	14,	-11,	21,	17,	33,	4,	53,	-9,	-27,	9,	24,	23,	-17,	-22,	-24,	14,	15,	-16,	-39,	16,	-11,	-52,	
+8,	14,	12,	67,	16,	-12,	-8,	-12,	-9,	21,	53,	8,	-14,	32,	12,	11,	5,	49,	-30,	-25,	10,	18,	39,	-55,	-14,	-14,	
+14,	21,	-6,	-15,	17,	-22,	-48,	9,	83,	17,	27,	22,	-21,	-18,	-18,	-14,	16,	43,	13,	-9,	6,	12,	13,	3,	54,	-24,	
+-13,	15,	44,	13,	-26,	-40,	-33,	14,	11,	-12,	-20,	36,	-19,	-23,	10,	83,	11,	12,	0,	-9,	-14,	-12,	-8,	
+13,	-21,	5,	-7,	10,	12,	14,	5,	72,	-23,	-13,	11,	23,	36,	-25,	-28,	-27,	7,	4,	-8,	-41,	5,	-9,	-31,	8,	
+37,	60,	13,	21,	-11,	-12,	-6,	-7,	11,	44,	6,	-10,	4,	10,	13,	10,	22,	-42,	-14,	18,	4,	17,	-27,	-15,	-33,	
+9,	12,	-11,	-13,	7,	-10,	-18,	5,	97,	13,	9,	39,	-11,	-5,	-9,	-4,	13,	-75,	8,	-9,	11,	8,	11,	33,	26,	-25,	
+-13,	4,	11,	15,	-11,	-35,	-12,	8,	12,	-5,	-11,	4,	-13,	-9,	8,	27,	14,	13,	107,	-14,	-13,	-7,	-9,	7};
+
+ TUNE(nbnw);
 
   // Different node types, used as a template parameter
   enum NodeType { NonPV, PV, Root };
@@ -180,6 +195,78 @@ void MainThread::search() {
       sync_cout << "\nNodes searched: " << nodes << "\n" << sync_endl;
       return;
   }
+
+/*
+std::cout << "  int nb"<< "[" << 8 << "] = {";
+for (size_t j=0; j < 8; ++j)
+  {
+        std::cout << int(Stockfish::Eval::NNUE::network[j]->biases[0]);
+         if (j < 7) std::cout << ", ";
+  }
+std::cout << "}; " << std::endl;
+*/
+/*
+ std::cout << "  int nbnw"<< "[" << 264 << "] = {";
+for (size_t j=0; j < 8; ++j)
+  {
+    if (j>0)
+	{
+		std::cout << ", " << std::endl;
+	};
+     size_t ndim=1;
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->biases[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+     std::cout << ", " << std::endl;
+
+     ndim=32;
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->weights[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+
+  }
+std::cout << "}; " << std::endl;
+*/
+
+/*
+// Output by network
+for (size_t j=0; j < 8; ++j)
+  {
+     std::cout << " // network " << j << std::endl;
+     size_t ndim=1;
+     std::cout << "  int netbiases_" << j << "[" << ndim << "] = {";
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->biases[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+     std::cout << "}; " << std::endl;
+     ndim=32;
+     std::cout << "  int netweights_" << j << "[" << ndim << "] = {";
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->weights[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+     std::cout << "}; " << std::endl;
+  }
+*/
+
+
+for (size_t j=0; j < 8; ++j)
+{
+	Stockfish::Eval::NNUE::network[j]->biases[0] = nbnw[j*33];
+
+    for (size_t i=0; i < 32; ++i)
+    {
+        Stockfish::Eval::NNUE::network[j]->weights[i] = nbnw[(i+1)+(j*33)];
+    }
+
+};
 
   Color us = rootPos.side_to_move();
   Time.init(Limits, us, rootPos.game_ply());
