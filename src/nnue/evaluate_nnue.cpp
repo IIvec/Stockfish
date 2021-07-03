@@ -18,6 +18,7 @@
 
 // Code for calculating NNUE evaluation function
 
+#include <fstream>
 #include <iostream>
 #include <set>
 #include <sstream>
@@ -161,14 +162,25 @@ namespace Stockfish::Eval::NNUE {
     ASSERT_ALIGNED(buffer, alignment);
 
     const std::size_t bucket = (pos.count<ALL_PIECES>() - 1) / 4;
+
     const auto psqt = featureTransformer->transform(pos, transformedFeatures, bucket);
     const auto output = network[bucket]->propagate(transformedFeatures, buffer);
 
-    int materialist = psqt;
-    int positional  = output[0];
+    int materialist   = psqt;
+    int positional    = output[0];
+    int entertainment = 0;
 
-    int delta_npm = abs(pos.non_pawn_material(WHITE) - pos.non_pawn_material(BLACK));
-    int entertainment = (adjusted && delta_npm <= BishopValueMg - KnightValueMg ? 7 : 0);
+    if (adjusted)
+    {
+        Color stm     = pos.side_to_move();
+        int delta_npm = pos.non_pawn_material(stm) - pos.non_pawn_material(~stm);
+
+        entertainment = (abs(delta_npm) <= BishopValueMg - KnightValueMg ? 7 : 0);
+
+        if (abs(positional) > 5000)
+           entertainment += positional < 0 && materialist > 0 ? 10
+           : positional > 0 && delta_npm > -KnightValueMg ? 10 : 0;
+    }
 
     int A = 128 - entertainment;
     int B = 128 + entertainment;
@@ -369,12 +381,17 @@ namespace Stockfish::Eval::NNUE {
   }
 
 
-  // Load eval, from a file stream or a memory stream
-  bool load_eval(std::string name, std::istream& stream) {
+  // Load the evaluation function file
+  bool load_eval_file(const std::string& evalFile) {
 
     initialize();
-    fileName = name;
-    return read_parameters(stream);
+    fileName = evalFile;
+
+    std::ifstream stream(evalFile, std::ios::binary);
+
+    const bool result = read_parameters(stream);
+
+    return result;
   }
 
   // Save eval, to a file stream or a memory stream

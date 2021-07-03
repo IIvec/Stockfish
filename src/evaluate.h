@@ -45,7 +45,7 @@ namespace Eval {
 
     std::string trace(Position& pos);
     Value evaluate(const Position& pos, bool adjusted = false);
-
+    bool load_eval_file(const std::string& evalFile);
     void init();
     void verify();
 
