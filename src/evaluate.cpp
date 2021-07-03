@@ -189,11 +189,9 @@ using namespace Trace;
 
 namespace {
 
-  // Threshold for lazy and space evaluation
-  constexpr Value LazyThreshold1    =  Value(3130);
-  constexpr Value LazyThreshold2    =  Value(2204);
-  constexpr Value SpaceThreshold    =  Value(11551);
-
+  // Threshold for space evaluation
+  constexpr Value SpaceThreshold    = Value(11551);
+  
   // KingAttackWeights[PieceType] contains king attack weights by piece type
   constexpr int KingAttackWeights[PIECE_TYPE_NB] = { 0, 0, 81, 52, 44, 10 };
 
@@ -984,13 +982,7 @@ namespace {
     pe = Pawns::probe(pos);
     score += pe->pawn_score(WHITE) - pe->pawn_score(BLACK);
 
-    // Early exit if score is high
-    auto lazy_skip = [&](Value lazyThreshold) {
-        return abs(mg_value(score) + eg_value(score)) > lazyThreshold + pos.non_pawn_material() / 32;
-    };
-
-    if (lazy_skip(LazyThreshold1))
-        goto make_v;
+    Value v;
 
     // Main evaluation begins here
     initialize<WHITE>();
@@ -1007,17 +999,12 @@ namespace {
 
     // More complex interactions that require fully populated attack bitboards
     score +=  king<   WHITE>() - king<   BLACK>()
-            + passed< WHITE>() - passed< BLACK>();
-
-    if (lazy_skip(LazyThreshold2))
-        goto make_v;
-
-    score +=  threats<WHITE>() - threats<BLACK>()
+            + threats<WHITE>() - threats<BLACK>()
+            + passed< WHITE>() - passed< BLACK>()
             + space<  WHITE>() - space<  BLACK>();
 
-make_v:
     // Derive single value from mg and eg parts of score
-    Value v = winnable(score);
+    v = winnable(score);
 
     // In case of tracing add all remaining individual evaluation terms
     if constexpr (T)
