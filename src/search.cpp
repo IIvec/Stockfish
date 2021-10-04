@@ -173,7 +173,7 @@ namespace {
 
 void Search::init() {
 
-  double r = 16.0;
+  double r = 16.0 + std::log(Threads.size()) / 2;
   for (int i = 1; i < MAX_MOVES; ++i)
   {
       DReductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
