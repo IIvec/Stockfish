@@ -680,7 +680,7 @@ namespace {
     // At non-PV nodes we check for an early TT cutoff
     if (  !PvNode
         && ss->ttHit
-        && tte->depth() >= depth
+        && tte->depth() > depth
         && ttValue != VALUE_NONE // Possible in case of TT access race
         && (ttValue >= beta ? (tte->bound() & BOUND_LOWER)
                             : (tte->bound() & BOUND_UPPER)))
@@ -794,15 +794,11 @@ namespace {
     }
     else
     {
-        // In case of null move search use previous static eval with a different sign
-        if ((ss-1)->currentMove != MOVE_NULL)
-            ss->staticEval = eval = evaluate(pos);
-        else
-            ss->staticEval = eval = -(ss-1)->staticEval;
+        ss->staticEval = eval = evaluate(pos);
 
         // Save static evaluation into transposition table
-        if(!excludedMove)
-        tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
+        if (!excludedMove)
+            tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
     }
 
     // Use static evaluation difference to improve quiet move ordering
@@ -836,7 +832,7 @@ namespace {
         && (ss-1)->statScore < 23767
         &&  eval >= beta
         &&  eval >= ss->staticEval
-        &&  ss->staticEval >= beta - 20 * depth - improvement / 15 + 168 * ss->ttPv + 177
+        &&  ss->staticEval >= beta - 20 * depth - improvement / 15 + 177
         && !excludedMove
         &&  thisThread->selDepth + 5 > thisThread->rootDepth
         &&  pos.non_pawn_material(us) > BishopValueMg
@@ -1222,11 +1218,11 @@ moves_loop: // When in check, search starts here
           // In general we want to cap the LMR depth search at newDepth. But if reductions
           // are really negative and movecount is low, we allow this move to be searched
           // deeper than the first move (this may lead to hidden double extensions).
-          int deeper =   r >= -1                   ? 0
-                       : moveCount <= 3 && r <= -3 ? 2
-                       : moveCount <= 5            ? 1
-                       : PvNode && depth > 6       ? 1
-                       :                             0;
+          int deeper =   r >= -1             ? 0
+                       : moveCount <= 3      ? 2
+                       : moveCount <= 5      ? 1
+                       : PvNode && depth > 6 ? 1
+                       :                       0;
 
           Depth d = std::clamp(newDepth - r, 1, newDepth + deeper);
 
