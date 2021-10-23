@@ -680,7 +680,7 @@ namespace {
     // At non-PV nodes we check for an early TT cutoff
     if (  !PvNode
         && ss->ttHit
-        && tte->depth() > depth
+        && tte->depth() > depth - (thisThread->id() % 2 == 1)
         && ttValue != VALUE_NONE // Possible in case of TT access race
         && (ttValue >= beta ? (tte->bound() & BOUND_LOWER)
                             : (tte->bound() & BOUND_UPPER)))
@@ -832,7 +832,7 @@ namespace {
         && (ss-1)->statScore < 23767
         &&  eval >= beta
         &&  eval >= ss->staticEval
-        &&  ss->staticEval >= beta - 20 * depth - improvement / 15 + 177
+        &&  ss->staticEval >= beta - 20 * depth - improvement / 15 + 204
         && !excludedMove
         &&  thisThread->selDepth + 5 > thisThread->rootDepth
         &&  pos.non_pawn_material(us) > BishopValueMg
