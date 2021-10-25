@@ -1167,10 +1167,9 @@ moves_loop: // When in check, search starts here
       // cases where we extend a son if it has good chances to be "interesting".
       if (    depth >= 3
           &&  moveCount > 1 + 2 * rootNode
-          && (  !captureOrPromotion
-              || (cutNode && (ss-1)->moveCount > 1)
-              || !ss->ttPv)
-          && (!PvNode || ss->ply > 1 || thisThread->id() % 4 != 3))
+          && (   !ss->ttPv
+              || !captureOrPromotion
+              || (cutNode && (ss-1)->moveCount > 1)))
       {
           Depth r = reduction(improving, depth, moveCount, rangeReduction > 2);
 
@@ -1219,8 +1218,7 @@ moves_loop: // When in check, search starts here
           // are really negative and movecount is low, we allow this move to be searched
           // deeper than the first move (this may lead to hidden double extensions).
           int deeper =   r >= -1             ? 0
-                       : moveCount <= 3      ? 2
-                       : moveCount <= 5      ? 1
+                       : moveCount <= 5      ? 2
                        : PvNode && depth > 6 ? 1
                        :                       0;
 
