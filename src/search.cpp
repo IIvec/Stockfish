@@ -381,7 +381,7 @@ void Thread::search() {
           // Reset aspiration window starting size
           if (rootDepth >= 4)
           {
-              Value prev = rootMoves[pvIdx].previousScore;
+              Value prev = rootMoves[pvIdx].averageScore;
               delta1 = (prev < 0) ? Value(8 + abs(prev) / 20) : Value(8);
               delta2 = (prev > 0) ? Value(8 + abs(prev) / 20) : Value(8);
               alpha = std::max(prev - delta1,-VALUE_INFINITE);
@@ -632,6 +632,8 @@ namespace {
         if (alpha >= beta)
             return alpha;
     }
+    else
+        thisThread->rootDelta = beta - alpha;
 
     assert(0 <= ss->ply && ss->ply < MAX_PLY);
 
@@ -820,7 +822,7 @@ namespace {
     if (   !PvNode
         &&  depth < 9
         &&  eval - futility_margin(depth, improving) >= beta
-        &&  eval < VALUE_KNOWN_WIN) // Do not return unproven wins
+        &&  eval < 15000) // 50% larger than VALUE_KNOWN_WIN, but smaller than TB wins.
         return eval;
 
     // Step 8. Null move search with verification search (~40 Elo)
@@ -1175,6 +1177,10 @@ moves_loop: // When in check, search starts here
               && bestMoveCount <= 3)
               r--;
 
+          // Increases reduction for PvNodes that have small window
+          if (PvNode && beta - alpha < thisThread->rootDelta / 4)
+              r++;
+
           // Decrease reduction if position is or has been on the PV
           // and node is not likely to fail low. (~3 Elo)
           if (   ss->ttPv
@@ -1281,6 +1287,8 @@ moves_loop: // When in check, search starts here
       {
           RootMove& rm = *std::find(thisThread->rootMoves.begin(),
                                     thisThread->rootMoves.end(), move);
+
+          rm.averageScore = rm.averageScore != -VALUE_INFINITE ? (2 * value + rm.averageScore) / 3 : value;
 
           // PV move or new best move?
           if (moveCount == 1 || value > alpha)
@@ -1418,13 +1426,12 @@ moves_loop: // When in check, search starts here
     Key posKey;
     Move ttMove, move, bestMove;
     Depth ttDepth;
-    Value bestValue, value, ttValue, futilityValue, futilityBase, oldAlpha;
+    Value bestValue, value, ttValue, futilityValue, futilityBase;
     bool pvHit, givesCheck, captureOrPromotion;
     int moveCount;
 
     if (PvNode)
     {
-        oldAlpha = alpha; // To flag BOUND_EXACT when eval above alpha and no available moves
         (ss+1)->pv = pv;
         ss->pv[0] = MOVE_NONE;
     }
@@ -1614,8 +1621,7 @@ moves_loop: // When in check, search starts here
 
     // Save gathered info in transposition table
     tte->save(posKey, value_to_tt(bestValue, ss->ply), pvHit,
-              bestValue >= beta ? BOUND_LOWER :
-              PvNode && bestValue > oldAlpha  ? BOUND_EXACT : BOUND_UPPER,
+              bestValue >= beta ? BOUND_LOWER : BOUND_UPPER,
               ttDepth, bestMove, ss->staticEval);
 
     assert(bestValue > -VALUE_INFINITE && bestValue < VALUE_INFINITE);
