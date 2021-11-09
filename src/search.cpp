@@ -291,7 +291,7 @@ void Thread::search() {
   // The latter is needed for statScore and killer initialization.
   Stack stack[MAX_PLY+10], *ss = stack+7;
   Move  pv[MAX_PLY+1];
-  Value bestValue, alpha, beta, delta1, delta2;
+  Value alpha, beta, delta1, delta2;
   Move  lastBestMove = MOVE_NONE;
   Depth lastBestMoveDepth = 0;
   MainThread* mainThread = (this == Threads.main() ? Threads.main() : nullptr);
@@ -1763,10 +1763,6 @@ moves_loop: // When in check, search starts here
     Thread* thisThread = pos.this_thread();
     thisThread->mainHistory[us][from_to(move)] << bonus;
     update_continuation_histories(ss, pos.moved_piece(move), to_sq(move), bonus);
-
-    // Penalty for reversed move in case of moved piece not being a pawn
-    if (type_of(pos.moved_piece(move)) != PAWN)
-        thisThread->mainHistory[us][from_to(reverse_move(move))] << -bonus;
 
     // Update countermove history
     if (is_ok((ss-1)->currentMove))

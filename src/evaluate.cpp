@@ -1113,6 +1113,7 @@ std::string Eval::trace(Position& pos) {
   std::memset(scores, 0, sizeof(scores));
 
   pos.this_thread()->trend = SCORE_ZERO; // Reset any dynamic contempt
+  pos.this_thread()->bestValue = VALUE_ZERO; // Reset bestValue for lazyEval
 
   v = Evaluation<TRACE>(pos).value();
 
