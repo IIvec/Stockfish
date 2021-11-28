@@ -173,6 +173,11 @@ enum Bound {
   BOUND_EXACT = BOUND_UPPER | BOUND_LOWER
 };
 
+enum ExplosionState {
+  EXPLOSION_NONE,
+  MUST_CALM_DOWN
+};
+
 enum Value : int {
   VALUE_ZERO      = 0,
   VALUE_DRAW      = 0,
@@ -463,10 +468,6 @@ constexpr PieceType promotion_type(Move m) {
 
 constexpr Move make_move(Square from, Square to) {
   return Move((from << 6) + to);
-}
-
-constexpr Move reverse_move(Move m) {
-  return make_move(to_sq(m), from_sq(m));
 }
 
 template<MoveType T>

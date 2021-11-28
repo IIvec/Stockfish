@@ -41,7 +41,7 @@ endif
 SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp \
 	material.cpp misc.cpp movegen.cpp movepick.cpp pawns.cpp position.cpp psqt.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
-	nnue/evaluate_nnue.cpp nnue/features/half_ka_v2.cpp
+	nnue/evaluate_nnue.cpp nnue/features/half_ka_v2_hm.cpp
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
 
@@ -88,7 +88,7 @@ endif
 # at the end of the line for flag values.
 #
 # Example of use for these flags:
-# make build ARCH=x86-64-avx512 debug=on sanitize="address undefined"
+# make build ARCH=x86-64-avx512 debug=yes sanitize="address undefined"
 
 
 ### 2.1. General and architecture defaults
@@ -368,7 +368,7 @@ ifeq ($(COMP),mingw)
 		CXX=g++
 	endif
 
-	CXXFLAGS += -Wextra -Wshadow
+	CXXFLAGS += -pedantic -Wextra -Wshadow
 	LDFLAGS += -static
 endif
 
@@ -405,8 +405,12 @@ ifeq ($(COMP),clang)
 endif
 
 ifeq ($(KERNEL),Darwin)
-	CXXFLAGS += -arch $(arch) -mmacosx-version-min=10.14
-	LDFLAGS += -arch $(arch) -mmacosx-version-min=10.14
+	CXXFLAGS += -mmacosx-version-min=10.14
+	LDFLAGS += -mmacosx-version-min=10.14
+	ifneq ($(arch),any)
+		CXXFLAGS += -arch $(arch)
+		LDFLAGS += -arch $(arch)
+	endif
 	XCRUN = xcrun
 endif
 
@@ -513,7 +517,7 @@ ifeq ($(bits),64)
 	CXXFLAGS += -DIS_64BIT
 endif
 
-### 3.5 prefetch
+### 3.5 prefetch and popcount
 ifeq ($(prefetch),yes)
 	ifeq ($(sse),yes)
 		CXXFLAGS += -msse
@@ -522,7 +526,6 @@ else
 	CXXFLAGS += -DNO_PREFETCH
 endif
 
-### 3.6 popcnt
 ifeq ($(popcnt),yes)
 	ifeq ($(arch),$(filter $(arch),ppc64 armv7 armv8 arm64))
 		CXXFLAGS += -DUSE_POPCNT
@@ -533,6 +536,7 @@ ifeq ($(popcnt),yes)
 	endif
 endif
 
+### 3.6 SIMD architectures
 ifeq ($(avx2),yes)
 	CXXFLAGS += -DUSE_AVX2
 	ifeq ($(comp),$(filter $(comp),gcc clang mingw))
@@ -747,7 +751,7 @@ profile-build: net config-sanity objclean profileclean
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) $(profile_make)
 	@echo ""
 	@echo "Step 2/4. Running benchmark for pgo-build ..."
-	$(PGOBENCH) > /dev/null
+	$(PGOBENCH) 2>&1 | tail -n 4
 	@echo ""
 	@echo "Step 3/4. Building optimized executable ..."
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) objclean
@@ -908,7 +912,7 @@ icc-profile-use:
 	EXTRACXXFLAGS='-prof_use -prof_dir ./profdir' \
 	all
 
-.depend:
+.depend: $(SRCS)
 	-@$(CXX) $(DEPENDFLAGS) -MM $(SRCS) > $@ 2> /dev/null
 
 -include .depend
