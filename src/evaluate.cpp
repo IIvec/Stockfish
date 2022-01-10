@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2021 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -1054,8 +1054,8 @@ namespace {
         && pos.piece_on(SQ_G7) == B_PAWN)
         correction += CorneredBishop;
 
-    return pos.side_to_move() == WHITE ?  Value(5 * correction)
-                                       : -Value(5 * correction);
+    return pos.side_to_move() == WHITE ?  Value(3 * correction)
+                                       : -Value(3 * correction);
   }
 
 } // namespace Eval
@@ -1072,10 +1072,10 @@ Value Eval::evaluate(const Position& pos) {
   // Deciding between classical and NNUE eval (~10 Elo): for high PSQ imbalance we use classical,
   // but we switch to NNUE during long shuffling or with high material on the board.
   if (  !useNNUE
-      || abs(eg_value(pos.psq_score())) * 5 > (850 + pos.non_pawn_material() / 64) * (5 + pos.rule50_count()))
+      || abs(eg_value(pos.psq_score())) * 5 > (849 + pos.non_pawn_material() / 64) * (5 + pos.rule50_count()))
   {
       v = Evaluation<NO_TRACE>(pos).value();          // classical
-      useClassical = abs(v) >= 300;
+      useClassical = abs(v) >= 298;
   }
 
   // If result of a classical evaluation is much lower than threshold fall back to NNUE
@@ -1086,9 +1086,9 @@ Value Eval::evaluate(const Position& pos) {
        Color stm      = pos.side_to_move();
        Value optimism = pos.this_thread()->optimism[stm];
        Value psq      = (stm == WHITE ? 1 : -1) * eg_value(pos.psq_score());
-       int complexity = abs(nnue - psq) / 256;
+       int complexity = 35 * abs(nnue - psq) / 256;
 
-       optimism *= (1 + complexity);
+       optimism = optimism * (44 + complexity) / 32;
        v = (nnue + optimism) * scale / 1024 - optimism;
 
        if (pos.is_chess960())
@@ -1096,7 +1096,7 @@ Value Eval::evaluate(const Position& pos) {
   }
 
   // Damp down the evaluation linearly when shuffling
-  v = v * (207 - pos.rule50_count()) / 207;
+  v = v * (208 - pos.rule50_count()) / 208;
 
   // Guarantee evaluation does not hit the tablebase range
   v = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
