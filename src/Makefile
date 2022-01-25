@@ -39,9 +39,9 @@ endif
 
 ### Executable name
 ifeq ($(target_windows),yes)
-	EXE = stockfish.exe
+	EXE = corchess.exe
 else
-	EXE = stockfish
+	EXE = corchess
 endif
 
 ### Installation dir definitions
