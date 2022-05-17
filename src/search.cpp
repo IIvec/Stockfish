@@ -330,6 +330,9 @@ for (size_t j=0; j < 8; ++j)
   bestPreviousScore = bestThread->rootMoves[0].score;
   bestPreviousAverageScore = bestThread->rootMoves[0].averageScore;
 
+  for (Thread* th : Threads)
+    th->previousDepth = bestThread->completedDepth;
+
   // Send again PV info if we have a new best thread
   if (bestThread != this)
       sync_cout << UCI::pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE) << sync_endl;
@@ -558,8 +561,7 @@ void Thread::search() {
           // If the bestMove is stable over several iterations, reduce time accordingly
           timeReduction = lastBestMoveDepth + 10 < completedDepth ? 1.63 : 0.73;
           double reduction = (1.56 + mainThread->previousTimeReduction) / (2.20 * timeReduction);
-          double bestMoveInstability = 1.073 + std::max(1.0, 2.25 - 9.9 / rootDepth)
-                                              * totBestMoveChanges / Threads.size();
+          double bestMoveInstability = 1 + 1.7 * totBestMoveChanges / Threads.size();
           int complexity = mainThread->complexityAverage.value();
           double complexPosition = std::clamp(1.0 + (complexity - 326) / 1618.1, 0.5, 1.5);
 
@@ -648,14 +650,15 @@ namespace {
     bool givesCheck, improving, didLMR, priorCapture;
     bool capture, doFullDepthSearch, moveCountPruning, ttCapture;
     Piece movedPiece;
-    int moveCount, captureCount, quietCount, bestMoveCount, improvement, complexity;
+    int moveCount, captureCount, quietCount, improvement, complexity;
 
     // Step 1. Initialize node
     Thread* thisThread = pos.this_thread();
+    thisThread->depth  = depth;
     ss->inCheck        = pos.checkers();
     priorCapture       = pos.captured_piece();
     Color us           = pos.side_to_move();
-    moveCount          = bestMoveCount = captureCount = quietCount = ss->moveCount = 0;
+    moveCount          = captureCount = quietCount = ss->moveCount = 0;
     bestValue          = -VALUE_INFINITE;
     maxValue           = VALUE_INFINITE;
 
@@ -695,6 +698,7 @@ namespace {
     (ss+1)->ttPv         = false;
     (ss+1)->excludedMove = bestMove = MOVE_NONE;
     (ss+2)->killers[0]   = (ss+2)->killers[1] = MOVE_NONE;
+    (ss+2)->cutoffCnt    = 0;
     ss->doubleExtensions = (ss-1)->doubleExtensions;
     ss->depth            = depth;
     Square prevSq        = to_sq((ss-1)->currentMove);
@@ -1152,7 +1156,7 @@ moves_loop: // When in check, search starts here
           // a reduced search on all the other moves but the ttMove and if the
           // result is lower than ttValue minus a margin, then we will extend the ttMove.
           if (   !rootNode
-              &&  depth >= 4 + 2 * (PvNode && tte->is_pv())
+              &&  depth >= 4 - (thisThread->previousDepth > 27) + 2 * (PvNode && tte->is_pv())
               &&  move == ttMove
               && !excludedMove // Avoid recursive singular search
            /* &&  ttValue != VALUE_NONE Already implicit in the next condition */
@@ -1189,6 +1193,10 @@ moves_loop: // When in check, search starts here
               // If the eval of ttMove is greater than beta, we reduce it (negative extension)
               else if (ttValue >= beta)
                   extension = -2;
+
+              // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
+              else if (ttValue <= alpha && ttValue <= value)
+                  extension = -1;
           }
 
           // Check extensions (~1 Elo)
@@ -1236,11 +1244,6 @@ moves_loop: // When in check, search starts here
       {
           Depth r = reduction(improving, depth, moveCount, delta, thisThread->rootDelta);
 
-          // Decrease reduction at some PvNodes (~2 Elo)
-          if (   PvNode
-              && bestMoveCount <= 3)
-              r--;
-
           // Decrease reduction if position is or has been on the PV
           // and node is not likely to fail low. (~3 Elo)
           if (   ss->ttPv
@@ -1263,6 +1266,14 @@ moves_loop: // When in check, search starts here
           // is vastly different from static evaluation
           if (PvNode && !ss->inCheck && abs(ss->staticEval - bestValue) > 250)
               r--;
+
+          // Decrease reduction for PvNodes based on depth
+          if (PvNode)
+              r -= 1 + 15 / ( 3 + depth );
+
+          // Increase reduction if next ply has a lot of fail high else reset count to 0
+          if ((ss+1)->cutoffCnt > 3 && !PvNode)
+              r++;
 
           ss->statScore =  thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
@@ -1386,15 +1397,27 @@ moves_loop: // When in check, search starts here
               if (PvNode && value < beta) // Update alpha! Always alpha < beta
               {
                   alpha = value;
-                  bestMoveCount++;
+
+                  // Reduce other moves if we have found at least one score improvement
+                  if (   depth > 2
+                      && depth < 7
+                      && beta  <  VALUE_KNOWN_WIN
+                      && alpha > -VALUE_KNOWN_WIN)
+                     depth -= 1;
+
+                  assert(depth > 0);
               }
               else
               {
+                  ss->cutoffCnt++;
                   assert(value >= beta); // Fail high
                   break;
               }
           }
       }
+      else
+         ss->cutoffCnt = 0;
+
 
       // If the move is worse than some previously searched move, remember it to update its stats later
       if (move != bestMove)
