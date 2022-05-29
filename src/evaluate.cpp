@@ -192,10 +192,7 @@ using namespace Trace;
 
 namespace {
 
-
-  // Threshold for lazy and space evaluation
-  constexpr Value LazyThreshold1    =  Value(3631);
-  constexpr Value LazyThreshold2    =  Value(2084);
+  // Threshold for space evaluation
   constexpr Value SpaceThreshold    =  Value(11551);
 
   // KingAttackWeights[PieceType] contains king attack weights by piece type
@@ -988,15 +985,7 @@ namespace {
     pe = Pawns::probe(pos);
     score += pe->pawn_score(WHITE) - pe->pawn_score(BLACK);
 
-    // Early exit if score is high
-    auto lazy_skip = [&](Value lazyThreshold) {
-        return abs(mg_value(score) + eg_value(score)) >   lazyThreshold
-                                                        + std::abs(pos.this_thread()->bestValue) * 5 / 4
-                                                        + pos.non_pawn_material() / 32;
-    };
-
-    if (lazy_skip(LazyThreshold1))
-        goto make_v;
+    Value v;
 
     // Main evaluation begins here
     initialize<WHITE>();
@@ -1013,17 +1002,12 @@ namespace {
 
     // More complex interactions that require fully populated attack bitboards
     score +=  king<   WHITE>() - king<   BLACK>()
-            + passed< WHITE>() - passed< BLACK>();
-
-    if (lazy_skip(LazyThreshold2))
-        goto make_v;
-
-    score +=  threats<WHITE>() - threats<BLACK>()
+            + passed< WHITE>() - passed< BLACK>()
+            + threats<WHITE>() - threats<BLACK>()
             + space<  WHITE>() - space<  BLACK>();
 
-make_v:
     // Derive single value from mg and eg parts of score
-    Value v = winnable(score);
+    v = winnable(score);
 
     // In case of tracing add all remaining individual evaluation terms
     if constexpr (T)
@@ -1084,13 +1068,14 @@ make_v:
 Value Eval::evaluate(const Position& pos) {
 
   Value v;
-  bool useClassical = false;
+  // Deciding between classical and NNUE eval (~10 Elo): for high PSQ imbalance we use classical,
+  // but we switch to NNUE during long shuffling or with high material on the board.
+  bool useClassical = (pos.this_thread()->depth > 9 || pos.count<ALL_PIECES>() > 7) &&
+          abs(eg_value(pos.psq_score())) * 5 > (856 + pos.non_pawn_material() / 64) * (10 + pos.rule50_count());
 
   // Deciding between classical and NNUE eval (~10 Elo): for high PSQ imbalance we use classical,
   // but we switch to NNUE during long shuffling or with high material on the board.
-  if (  !useNNUE
-      || ((pos.this_thread()->depth > 9 || pos.count<ALL_PIECES>() > 7) &&
-          abs(eg_value(pos.psq_score())) * 5 > (856 + pos.non_pawn_material() / 64) * (10 + pos.rule50_count())))
+  if (!useNNUE || useClassical)
   {
       v = Evaluation<NO_TRACE>(pos).value();          // classical
       useClassical = abs(v) >= 297;
@@ -1100,14 +1085,14 @@ Value Eval::evaluate(const Position& pos) {
   if (useNNUE && !useClassical)
   {
        Value nnue     = NNUE::evaluate(pos, true);     // NNUE
-       int scale      = 1014 + 21 * pos.non_pawn_material() / 1024;
+       int scale      = 1080 + 110 * pos.non_pawn_material() / 5120;
        Color stm      = pos.side_to_move();
        Value optimism = pos.this_thread()->optimism[stm];
        Value psq      = (stm == WHITE ? 1 : -1) * eg_value(pos.psq_score());
-       int complexity = 35 * abs(nnue - psq) / 256;
+       int complexity = (278 * abs(nnue - psq)) / 256;
 
-       optimism = optimism * (32 + complexity) / 32;
-       v = (nnue * scale + optimism * (scale - 846)) / 1024;
+       optimism = optimism * (251 + complexity) / 256;
+       v = (nnue * scale + optimism * (scale - 852)) / 1024;
 
        if (pos.is_chess960())
            v += fix_FRC(pos);
