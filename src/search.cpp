@@ -34,6 +34,7 @@
 #include "tt.h"
 #include "uci.h"
 #include "syzygy/tbprobe.h"
+#include "nnue/evaluate_nnue.h"
 
 namespace Stockfish {
 
@@ -58,6 +59,25 @@ using namespace Search;
 
 namespace {
 
+int nbnw[264] = {246,
+21, -19, 18, 40, 55, 25, 25, -16, -11, 66, 15, 35, -68, -21, -25, 21, 32, -9, -16, 28, -21, -51, 7, 49, 15, 15, -51, -19, -51, -18, -25, 26,
+361,
+13, -53, 37, 12, 18, 25, 27, -14, -18, 10, 27, 15, -19, -14, -29, 10, 13, -16, -18, 20, -22, -53, 10, 22, 13, 19, 15, -19, -14, -9, -11, 27,
+311,
+10, -9, 17, 20, 41, 4, 51, -11, -24, 9, 23, 24, -21, -20, -21, 21, 14, -13, -46, 11, -10, -39, 10, 11, 13, 68, 16, -13, -11, -10, -10, 22,
+37,
+13, -18, 47, 15, 12, 5, 42, -29, -29, 9, 18, 41, -38, -18, -16, 17, 20, -7, -17, 15, -20, -58, 6, 83, 12, 20, 15, -24, -15, -14, -14, 16,
+61,
+15, -11, 5, 10, 14, 6, 34, -28, -13, 15, 34, 14, -30, -34, -35, 13, 12, -14, -23, 37, -15, -24, 9, 90, 12, 14, 0, -11, -16, -9, -7, 11,
+-25,
+6, -10, 10, 8, 13, 3, 82, -24, -11, 13, 20, 33, -17, -25, -25, 8, 6, -10, -56, 6, -11, -30, 10, 29, 51, 13, 21, -8, -12, -7, -6, 12,
+27,
+8, -10, 5, 9, 11, 11, 17, -43, -15, 23, 5, 23, -26, -16, -30, 10, 15, -11, -12, 6, -10, -13, 9, 125, 13, 9, 64, -12, -6, -9, -5, 11,
+-60,
+9, -9, 10, 8, 14, 26, 31, -30, -12, 6, 9, 16, -14, -31, -13, 7, 13, -8, -12, 4, -10, -11, 9, 19, 17, 15, 94, -15, -17, -6, -6, 8};
+
+ TUNE(nbnw);
+
   // Different node types, used as a template parameter
   enum NodeType { NonPV, PV, Root };
 
@@ -67,10 +87,11 @@ namespace {
   }
 
   // Reductions lookup table, initialized at startup
-  int Reductions[MAX_MOVES]; // [depth or moveNumber]
+  int DReductions[MAX_MOVES]; // [depth]
+  int MReductions[MAX_MOVES]; // [moveNumber]
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
-    int r = Reductions[d] * Reductions[mn];
+    int r = DReductions[d] * MReductions[mn];
     return (r + 1642 - int(delta) * 1024 / int(rootDelta)) / 1024 + (!i && r > 916);
   }
 
@@ -81,7 +102,7 @@ namespace {
 
   // History and stats update bonus, based on depth
   int stat_bonus(Depth d) {
-    return std::min((12 * d + 282) * d - 349 , 1594);
+    return std::min((d + 100) * d , 1594);
   }
 
   // Add a small random component to draw evaluations to avoid 3-fold blindness
@@ -157,8 +178,12 @@ namespace {
 
 void Search::init() {
 
+  double r = 18.0 + std::log(Threads.size()) / 2;
   for (int i = 1; i < MAX_MOVES; ++i)
-      Reductions[i] = int((20.26 + std::log(Threads.size()) / 2) * std::log(i));
+  {
+      DReductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
+      MReductions[i] = int(r * log(i + 0.25 * log(i)));
+  }
 }
 
 
@@ -186,6 +211,78 @@ void MainThread::search() {
       sync_cout << "\nNodes searched: " << nodes << "\n" << sync_endl;
       return;
   }
+
+/*
+std::cout << "  int nb"<< "[" << 8 << "] = {";
+for (size_t j=0; j < 8; ++j)
+  {
+        std::cout << int(Stockfish::Eval::NNUE::network[j]->biases[0]);
+         if (j < 7) std::cout << ", ";
+  }
+std::cout << "}; " << std::endl;
+*/
+/*
+ std::cout << "  int nbnw"<< "[" << 264 << "] = {";
+for (size_t j=0; j < 8; ++j)
+  {
+    if (j>0)
+	{
+		std::cout << ", " << std::endl;
+	};
+     size_t ndim=1;
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->biases[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+     std::cout << ", " << std::endl;
+
+     ndim=32;
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->weights[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+
+  }
+std::cout << "}; " << std::endl;
+*/
+
+/*
+// Output by network
+for (size_t j=0; j < 8; ++j)
+  {
+     std::cout << " // network " << j << std::endl;
+     size_t ndim=1;
+     std::cout << "  int netbiases_" << j << "[" << ndim << "] = {";
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->biases[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+     std::cout << "}; " << std::endl;
+     ndim=32;
+     std::cout << "  int netweights_" << j << "[" << ndim << "] = {";
+     for (size_t i=0; i < ndim; ++i)
+     {
+         std::cout << int(Stockfish::Eval::NNUE::network[j]->weights[i]);
+         if (i < ndim - 1) std::cout << ", ";
+     }
+     std::cout << "}; " << std::endl;
+  }
+*/
+
+
+for (size_t j=0; j < 8; ++j)
+{
+	Stockfish::Eval::NNUE::network[j]->biases[0] = nbnw[j*33];
+
+    for (size_t i=0; i < 32; ++i)
+    {
+        Stockfish::Eval::NNUE::network[j]->weights[i] = nbnw[(i+1)+(j*33)];
+    }
+
+};
 
   Color us = rootPos.side_to_move();
   Time.init(Limits, us, rootPos.game_ply());
@@ -267,7 +364,7 @@ void Thread::search() {
   // The latter is needed for statScore and killer initialization.
   Stack stack[MAX_PLY+10], *ss = stack+7;
   Move  pv[MAX_PLY+1];
-  Value alpha, beta, delta;
+  Value alpha, beta, delta1, delta2;
   Move  lastBestMove = MOVE_NONE;
   Depth lastBestMoveDepth = 0;
   MainThread* mainThread = (this == Threads.main() ? Threads.main() : nullptr);
@@ -284,7 +381,7 @@ void Thread::search() {
 
   ss->pv = pv;
 
-  bestValue = delta = alpha = -VALUE_INFINITE;
+  bestValue = delta1 = delta2 = alpha = -VALUE_INFINITE;
   beta = VALUE_INFINITE;
 
   if (mainThread)
@@ -352,9 +449,10 @@ void Thread::search() {
           if (rootDepth >= 4)
           {
               Value prev = rootMoves[pvIdx].averageScore;
-              delta = Value(10) + int(prev) * prev / 15620;
-              alpha = std::max(prev - delta,-VALUE_INFINITE);
-              beta  = std::min(prev + delta, VALUE_INFINITE);
+              delta1 = (prev < 0) ? Value(10 + abs(prev) / 20) : Value(10);
+              delta2 = (prev > 0) ? Value(10 + abs(prev) / 20) : Value(10);
+              alpha = std::max(prev - delta1,-VALUE_INFINITE);
+              beta  = std::min(prev + delta2, VALUE_INFINITE);
 
               // Adjust trend and optimism based on root move's previousScore
               int tr = 116 * prev / (std::abs(prev) + 89);
@@ -404,7 +502,7 @@ void Thread::search() {
               if (bestValue <= alpha)
               {
                   beta = (alpha + beta) / 2;
-                  alpha = std::max(bestValue - delta, -VALUE_INFINITE);
+                  alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
 
                   failedHighCnt = 0;
                   if (mainThread)
@@ -412,13 +510,14 @@ void Thread::search() {
               }
               else if (bestValue >= beta)
               {
-                  beta = std::min(bestValue + delta, VALUE_INFINITE);
+                  beta = std::min(bestValue + delta2, VALUE_INFINITE);
                   ++failedHighCnt;
               }
               else
                   break;
 
-              delta += delta / 4 + 2;
+              delta1 += delta1 / 4 + 2;
+              delta2 += delta2 / 4 + 2;
 
               assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
           }
@@ -800,13 +899,14 @@ namespace {
         &&  eval >= ss->staticEval
         &&  ss->staticEval >= beta - 20 * depth - improvement / 13 + 233 + complexity / 25
         && !excludedMove
-        &&  pos.non_pawn_material(us)
+        &&  thisThread->selDepth + 5 > thisThread->rootDepth
+        &&  pos.non_pawn_material(us) > BishopValueMg
         && (ss->ply >= thisThread->nmpMinPly || us != thisThread->nmpColor))
     {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth, eval and complexity of position
-        Depth R = std::min(int(eval - beta) / 168, 7) + depth / 3 + 4 - (complexity > 861);
+        Depth R = std::max(1, int(2.8 * log(depth)) + std::min(int(eval - beta) / 168, 7) - (complexity > 861));
 
         ss->currentMove = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
@@ -1056,7 +1156,7 @@ moves_loop: // When in check, search starts here
            /* &&  ttValue != VALUE_NONE Already implicit in the next condition */
               &&  abs(ttValue) < VALUE_KNOWN_WIN
               && (tte->bound() & BOUND_LOWER)
-              &&  tte->depth() >= depth - 3)
+              &&  tte->depth() >= depth - 4)
           {
               Value singularBeta = ttValue - (3 + (ss->ttPv && !PvNode)) * depth;
               Depth singularDepth = (depth - 1) / 2;

@@ -39,9 +39,9 @@ endif
 
 ### Executable name
 ifeq ($(target_windows),yes)
-	EXE = stockfish.exe
+	EXE = corchess.exe
 else
-	EXE = stockfish
+	EXE = corchess
 endif
 
 ### Installation dir definitions
@@ -859,16 +859,16 @@ net:
 
 # clean binaries and objects
 objclean:
-	@rm -f stockfish stockfish.exe *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
+	@rm -f corchess corchess.exe *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
 
 # clean auxiliary profiling files
 profileclean:
 	@rm -rf profdir
 	@rm -f bench.txt *.gcda *.gcno ./syzygy/*.gcda ./nnue/*.gcda ./nnue/features/*.gcda *.s
-	@rm -f stockfish.profdata *.profraw
-	@rm -f stockfish.*args*
-	@rm -f stockfish.*lt*
-	@rm -f stockfish.res
+	@rm -f corchess.profdata *.profraw
+	@rm -f corchess.*args*
+	@rm -f corchess.*lt*
+	@rm -f corchess.res
 	@rm -f ./-lstdc++.res
 
 default:
@@ -946,9 +946,9 @@ clang-profile-make:
 	all
 
 clang-profile-use:
-	$(XCRUN) llvm-profdata merge -output=stockfish.profdata *.profraw
+	$(XCRUN) llvm-profdata merge -output=corchess.profdata *.profraw
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) \
-	EXTRACXXFLAGS='-fprofile-instr-use=stockfish.profdata' \
+	EXTRACXXFLAGS='-fprofile-instr-use=corchess.profdata' \
 	EXTRALDFLAGS='-fprofile-use ' \
 	all
 
