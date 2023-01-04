@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -56,7 +56,7 @@ using std::string;
 using Eval::evaluate;
 using namespace Search;
 
-int stn[28] = {165, 1642, 916, 1480, 180, 10, 17139, 20, 233, 28, 191, 54, 417, 180, 201, 222, 3875, 106, 145, 24, 15, 4433, 13000, 64, 11, 582, 62, 153};
+int stn[28] = {158, 1460, 937, 1650, 180, 10, 18200, 20, 235, 28, 180, 54, 402, 185, 203, 220, 4180, 103, 136, 25, 16, 4467, 12800, 66, 11, 582, 65, 158};
 TUNE(stn);
 
 namespace {
@@ -284,8 +284,11 @@ void Thread::search() {
   int iterIdx = 0;
 
   std::memset(ss-7, 0, 10 * sizeof(Stack));
-  for (int i = 7; i > 0; i--)
+  for (int i = 7; i > 0; --i)
+  {
       (ss-i)->continuationHistory = &this->continuationHistory[0][0][NO_PIECE][0]; // Use as a sentinel
+      (ss-i)->staticEval = VALUE_NONE;
+  }
 
   for (int i = 0; i <= MAX_PLY + 2; ++i)
       (ss+i)->ply = i;
@@ -315,7 +318,7 @@ void Thread::search() {
 
   multiPV = std::min(multiPV, rootMoves.size());
 
-  complexityAverage.set(155, 1);
+  complexityAverage.set(153, 1);
 
   optimism[us] = optimism[~us] = VALUE_ZERO;
 
@@ -365,7 +368,7 @@ void Thread::search() {
               beta  = std::min(prev + delta2, VALUE_INFINITE);
 
               // Adjust optimism based on root move's previousScore
-              int opt = 118 * prev / (std::abs(prev) + 169);
+              int opt = 116 * prev / (std::abs(prev) + 170);
               optimism[ us] = Value(opt);
               optimism[~us] = -optimism[us];
           }
@@ -763,7 +766,7 @@ namespace {
     // Use static evaluation difference to improve quiet move ordering (~4 Elo)
     if (is_ok((ss-1)->currentMove) && !(ss-1)->inCheck && !priorCapture)
     {
-        int bonus = std::clamp(-19 * int((ss-1)->staticEval + ss->staticEval), -1914, 1914);
+        int bonus = std::clamp(-19 * int((ss-1)->staticEval + ss->staticEval), -1940, 1940);
         thisThread->mainHistory[~us][from_to((ss-1)->currentMove)] << bonus;
     }
 
@@ -773,13 +776,13 @@ namespace {
     // margin and the improving flag are used in various pruning heuristics.
     improvement =   (ss-2)->staticEval != VALUE_NONE ? ss->staticEval - (ss-2)->staticEval
                   : (ss-4)->staticEval != VALUE_NONE ? ss->staticEval - (ss-4)->staticEval
-                  :                                    168;
+                  :                                    172;
     improving = improvement > 0;
 
     // Step 7. Razoring (~1 Elo).
     // If eval is really low check with qsearch if it can exceed alpha, if it can't,
     // return a fail low.
-    if (eval < alpha - 369 - 254 * depth * depth)
+    if (eval < alpha - 394 - 255 * depth * depth)
     {
         value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
         if (value < alpha)
@@ -790,9 +793,9 @@ namespace {
     // The depth condition is important for mate finding.
     if (   !ss->ttPv
         &&  depth < 8
-        &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 303 >= beta
+        &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 304 >= beta
         &&  eval >= beta
-        &&  eval < 28031) // larger than VALUE_KNOWN_WIN, but smaller than TB wins
+        &&  eval < 28580) // larger than VALUE_KNOWN_WIN, but smaller than TB wins
         return eval;
 
     // Step 9. Null move search with verification search (~35 Elo)
@@ -801,7 +804,7 @@ namespace {
         && (ss-1)->statScore < stn[6]
         &&  eval >= beta
         &&  eval >= ss->staticEval
-        &&  ss->staticEval >= beta - stn[7] * depth - improvement / 13 + stn[8] + complexity / 25
+        &&  ss->staticEval >= beta - stn[7] * depth - improvement / 14 + stn[8] + complexity / 24
         && !excludedMove
         &&  thisThread->selDepth + 5 > thisThread->rootDepth
         &&  pos.non_pawn_material(us) > BishopValueMg
@@ -810,7 +813,7 @@ namespace {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth, eval and complexity of position
-        Depth R = std::max(1, int(stn[9]/10.0 * log(depth)) + std::min(int(eval - beta) / 168, 7) - (complexity > 861));
+        Depth R = std::max(1, int(stn[9]/10.0 * log(depth)) + std::min(int(eval - beta) / 165, 6) - (complexity > 800));
         ss->currentMove = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
 
@@ -1033,7 +1036,7 @@ moves_loop: // When in check, search starts here
               // Futility pruning: parent node (~13 Elo)
               if (   !ss->inCheck
                   && lmrDepth < 13
-                  && ss->staticEval + stn[17] + stn[18] * lmrDepth + history / 52 <= alpha)
+                  && ss->staticEval + stn[17] + stn[18] * lmrDepth + history / 53 <= alpha)
                   continue;
 
               // Prune moves with negative SEE (~4 Elo)
@@ -1102,14 +1105,14 @@ moves_loop: // When in check, search starts here
           // Check extensions (~1 Elo)
           else if (   givesCheck
                    && depth > 9
-                   && abs(ss->staticEval) > 82)
+                   && abs(ss->staticEval) > 78)
               extension = 1;
 
           // Quiet ttMove extensions (~1 Elo)
           else if (   PvNode
                    && move == ttMove
                    && move == ss->killers[0]
-                   && (*contHist[0])[movedPiece][to_sq(move)] >= 5177)
+                   && (*contHist[0])[movedPiece][to_sq(move)] >= 5600)
               extension = 1;
       }
 
@@ -1174,7 +1177,7 @@ moves_loop: // When in check, search starts here
                      - stn[21];
 
       // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
-      r -= ss->statScore / (stn[22] + 4152 * (depth > 7 && depth < 19));
+      r -= ss->statScore / (stn[22] + 4410 * (depth > 7 && depth < 19));
 
       // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
       // We use various heuristics for the sons of a node after the first son has
@@ -1371,7 +1374,7 @@ moves_loop: // When in check, search starts here
         bool extraBonus =    PvNode
                           || cutNode;
 
-        bool doubleExtraBonus = extraBonus && bestValue < alpha - 85 * depth;
+        bool doubleExtraBonus = extraBonus && bestValue < alpha - 88 * depth;
 
         update_continuation_histories(ss-1, pos.piece_on(prevSq), prevSq, stat_bonus(depth) * (1 + extraBonus + doubleExtraBonus));
     }
@@ -1700,7 +1703,7 @@ moves_loop: // When in check, search starts here
 
     if (!pos.capture(bestMove))
     {
-        int bonus2 = bestValue > beta + 137 ? bonus1               // larger bonus
+        int bonus2 = bestValue > beta + 146 ? bonus1               // larger bonus
                                             : stat_bonus(depth);   // smaller bonus
 
         // Increase stats for the best move in case it was a quiet move
