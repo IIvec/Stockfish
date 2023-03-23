@@ -35,7 +35,7 @@ namespace UCI {
 // the win_rate_model() such that Stockfish outputs an advantage of
 // "100 centipawns" for a position if the engine has a 50% probability to win
 // from this position in selfplay at fishtest LTC time control.
-const int NormalizeToPawnValue = 361;
+const int NormalizeToPawnValue = 394;
 
 class Option;
 
@@ -45,12 +45,12 @@ struct CaseInsensitiveLess {
 };
 
 /// The options container is defined as a std::map
-typedef std::map<std::string, Option, CaseInsensitiveLess> OptionsMap;
+using OptionsMap = std::map<std::string, Option, CaseInsensitiveLess>;
 
 /// The Option class implements each option as specified by the UCI protocol
 class Option {
 
-  typedef void (*OnChange)(const Option&);
+  using OnChange = void (*)(const Option&);
 
 public:
   Option(OnChange = nullptr);

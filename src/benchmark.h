@@ -16,40 +16,19 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef EVALUATE_H_INCLUDED
-#define EVALUATE_H_INCLUDED
+#ifndef BENCHMARK_H_INCLUDED
+#define BENCHMARK_H_INCLUDED
 
+#include <iosfwd>
 #include <string>
-#include <optional>
-
-#include "types.h"
+#include <vector>
 
 namespace Stockfish {
 
 class Position;
 
-namespace Eval {
-
-  std::string trace(Position& pos);
-  Value evaluate(const Position& pos, int* complexity = nullptr);
-
-  extern bool useNNUE;
-  extern std::string currentEvalFileName;
-
-  // The default net name MUST follow the format nn-[SHA256 first 12 digits].nnue
-  // for the build process (profile-build and fishtest) to work. Do not change the
-  // name of the macro, as it is used in the Makefile.
-  #define EvalFileDefaultName   "nn-52471d67216a.nnue"
-
-  namespace NNUE {
-
-    void init();
-    void verify();
-
-  } // namespace NNUE
-
-} // namespace Eval
+std::vector<std::string> setup_bench(const Position&, std::istream&);
 
 } // namespace Stockfish
 
-#endif // #ifndef EVALUATE_H_INCLUDED
+#endif // #ifndef BENCHMARK_H_INCLUDED
