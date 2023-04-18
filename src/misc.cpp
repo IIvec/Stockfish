@@ -142,19 +142,19 @@ public:
 } // namespace
 
 
-/// engine_info() returns the full name of the current Stockfish version.
+/// engine_info() returns the full name of the current CorChess 3 version.
 /// For local dev compiles we try to append the commit sha and commit date
 /// from git if that fails only the local compilation date is set and "nogit" is specified:
-/// Stockfish dev-YYYYMMDD-SHA
+/// CorChess 3 dev-YYYYMMDD-SHA
 /// or
-/// Stockfish dev-YYYYMMDD-nogit
+/// CorChess 3 dev-YYYYMMDD-nogit
 ///
 /// For releases (non dev builds) we only include the version number:
-/// Stockfish version
+/// CorChess 3 version
 
 string engine_info(bool to_uci) {
   stringstream ss;
-  ss << "Stockfish " << version << setfill('0');
+  ss << "CorChess 3 " << version << setfill('0');
 
   if constexpr (version == "dev")
   {
@@ -180,7 +180,7 @@ string engine_info(bool to_uci) {
   }
 
   ss << (to_uci  ? "\nid author ": " by ")
-     << "the Stockfish developers (see AUTHORS file)";
+     << "I. Ivec, the Stockfish developers (see AUTHORS file)";
 
   return ss.str();
 }
