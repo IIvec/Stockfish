@@ -355,8 +355,8 @@ void Thread::search() {
           Value prev = rootMoves[pvIdx].averageScore;
           delta1 = (prev < 0) ? Value(10 + abs(prev) / 20) : Value(10);
           delta2 = (prev > 0) ? Value(10 + abs(prev) / 20) : Value(10);
-          alpha = std::max(prev - delta,-VALUE_INFINITE);
-          beta  = std::min(prev + delta, VALUE_INFINITE);
+          alpha = std::max(prev - delta1,-VALUE_INFINITE);
+          beta  = std::min(prev + delta2, VALUE_INFINITE);
 
           // Adjust optimism based on root move's previousScore
           int opt = 120 * prev / (std::abs(prev) + 161);
