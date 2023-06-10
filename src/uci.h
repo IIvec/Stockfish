@@ -35,7 +35,7 @@ namespace UCI {
 // the win_rate_model() such that Stockfish outputs an advantage of
 // "100 centipawns" for a position if the engine has a 50% probability to win
 // from this position in selfplay at fishtest LTC time control.
-const int NormalizeToPawnValue = 394;
+const int NormalizeToPawnValue = 343;
 
 class Option;
 
@@ -61,7 +61,7 @@ public:
 
   Option& operator=(const std::string&);
   void operator<<(const Option&);
-  operator double() const;
+  operator int() const;
   operator std::string() const;
   bool operator==(const char*) const;
 
