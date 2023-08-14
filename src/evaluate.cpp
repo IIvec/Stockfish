@@ -143,7 +143,6 @@ Value Eval::evaluate(const Position& pos) {
   assert(!pos.checkers());
 
   Value v;
-  Value psq = pos.psq_eg_stm();
 
   int nnueComplexity;
   int npm = pos.non_pawn_material() / 64;
@@ -153,8 +152,11 @@ Value Eval::evaluate(const Position& pos) {
 
   Value nnue = NNUE::evaluate(pos, true, &nnueComplexity);
 
+  int material =  pos.non_pawn_material(stm) - pos.non_pawn_material(~stm)
+                + 126 * (pos.count<PAWN>(stm) - pos.count<PAWN>(~stm));
+
   // Blend optimism with nnue complexity and (semi)classical complexity
-  optimism += optimism * (nnueComplexity + abs(psq - nnue)) / 512;
+  optimism += optimism * (nnueComplexity + abs(material - nnue)) / 512;
 
   v = (  nnue     * (915 + npm + 9 * pos.count<PAWN>())
        + optimism * (154 + npm +     pos.count<PAWN>())) / 1024;
