@@ -81,10 +81,11 @@ Value futility_margin(Depth d, bool noTtCutNode, bool improving) {
 }
 
 // Reductions lookup table initialized at startup
-int Reductions[MAX_MOVES];  // [depth or moveNumber]
+int DReductions[MAX_MOVES]; // [depth]
+int MReductions[MAX_MOVES]; // [moveNumber]
 
 Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
-    int reductionScale = Reductions[d] * Reductions[mn];
+    int reductionScale = DReductions[d] * MReductions[mn];
     return (reductionScale + 1487 - int(delta) * 976 / int(rootDelta)) / 1024
          + (!i && reductionScale > 808);
 }
@@ -182,8 +183,12 @@ uint64_t perft(Position& pos, Depth depth) {
 // Called at startup to initialize various lookup tables
 void Search::init() {
 
+    double r = 18.0 + std::log(Threads.size()) / 2;
     for (int i = 1; i < MAX_MOVES; ++i)
-        Reductions[i] = int((20.37 + std::log(Threads.size()) / 2) * std::log(i));
+    {
+        DReductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
+        MReductions[i] = int(r * log(i + 0.25 * log(i)));
+    }
 }
 
 
@@ -284,7 +289,7 @@ void Thread::search() {
     // (ss + 2) is needed for initialization of cutOffCnt and killers.
     Stack       stack[MAX_PLY + 10], *ss = stack + 7;
     Move        pv[MAX_PLY + 1];
-    Value       alpha, beta, delta;
+    Value       alpha, beta, delta1, delta2;
     Move        lastBestMove      = MOVE_NONE;
     Depth       lastBestMoveDepth = 0;
     MainThread* mainThread        = (this == Threads.main() ? Threads.main() : nullptr);
@@ -364,9 +369,10 @@ void Thread::search() {
 
             // Reset aspiration window starting size
             Value avg = rootMoves[pvIdx].averageScore;
-            delta     = Value(10) + int(avg) * avg / 15335;
-            alpha     = std::max(avg - delta, -VALUE_INFINITE);
-            beta      = std::min(avg + delta, VALUE_INFINITE);
+            delta1 = (avg < 0) ? Value(10 + abs(avg) / 20) : Value(10);
+            delta2 = (avg > 0) ? Value(10 + abs(avg) / 20) : Value(10);
+            alpha = std::max(avg - delta1,-VALUE_INFINITE);
+            beta  = std::min(avg + delta2, VALUE_INFINITE);
 
             // Adjust optimism based on root move's averageScore (~4 Elo)
             optimism[us]  = 103 * (avg + 33) / (std::abs(avg + 34) + 119);
@@ -409,7 +415,7 @@ void Thread::search() {
                 if (bestValue <= alpha)
                 {
                     beta  = (alpha + beta) / 2;
-                    alpha = std::max(bestValue - delta, -VALUE_INFINITE);
+                    alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
 
                     failedHighCnt = 0;
                     if (mainThread)
@@ -417,13 +423,14 @@ void Thread::search() {
                 }
                 else if (bestValue >= beta)
                 {
-                    beta = std::min(bestValue + delta, VALUE_INFINITE);
+                    beta = std::min(bestValue + delta2, VALUE_INFINITE);
                     ++failedHighCnt;
                 }
                 else
                     break;
 
-                delta += delta / 3;
+                delta1 += delta1 / 3;
+                delta2 += delta2 / 3;
 
                 assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
             }
@@ -782,14 +789,14 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
     // Step 9. Null move search with verification search (~35 Elo)
     if (!PvNode && (ss - 1)->currentMove != MOVE_NULL && (ss - 1)->statScore < 17257 && eval >= beta
         && eval >= ss->staticEval && ss->staticEval >= beta - 24 * depth + 281 && !excludedMove
-        && pos.non_pawn_material(us) && ss->ply >= thisThread->nmpMinPly
-        && beta > VALUE_TB_LOSS_IN_MAX_PLY)
+        && thisThread->selDepth + 5 > thisThread->rootDepth && pos.non_pawn_material(us) 
+        && ss->ply >= thisThread->nmpMinPly && beta > VALUE_TB_LOSS_IN_MAX_PLY)
     {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth and eval
-        Depth R = std::min(int(eval - beta) / 152, 6) + depth / 3 + 4;
-
+        Depth R = std::max(1, int(2.8 * log(depth)) + std::min(int(eval - beta) / 152, 6) - (pos.non_pawn_material(us) <= BishopValue));
+        
         ss->currentMove         = MOVE_NULL;
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
 
