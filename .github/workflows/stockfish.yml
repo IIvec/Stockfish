@@ -30,12 +30,10 @@ jobs:
         if: env.COMMIT_SHA != 'null'
         with:
           tag_name: ${{ env.COMMIT_SHA }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
-  # The include checks currently fail because of broken LLVM nightly packages: https://github.com/llvm/llvm-project/issues/73402
-  #Analyzers:
-  #  uses: ./.github/workflows/stockfish_analyzers.yml
+  Analyzers:
+    uses: ./.github/workflows/stockfish_analyzers.yml
   Sanitizers:
     uses: ./.github/workflows/stockfish_sanitizers.yml
   Tests:
