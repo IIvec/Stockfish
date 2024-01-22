@@ -260,7 +260,7 @@ void Search::Worker::iterative_deepening() {
     SearchManager*    mainThread        = (thread_idx == 0 ? main_manager() : nullptr);
     double            timeReduction = 1, totBestMoveChanges = 0;
     Color             us = rootPos.side_to_move();
-    int               delta, iterIdx = 0;
+    int               delta1, delta2, iterIdx = 0;
 
     std::memset(ss - 7, 0, 10 * sizeof(Stack));
     for (int i = 7; i > 0; --i)
@@ -334,9 +334,10 @@ void Search::Worker::iterative_deepening() {
 
             // Reset aspiration window starting size
             Value avg = rootMoves[pvIdx].averageScore;
-            delta     = Value(9) + int(avg) * avg / 13181;
-            alpha     = std::max(avg - delta, -VALUE_INFINITE);
-            beta      = std::min(avg + delta, int(VALUE_INFINITE));
+            delta1 = (avg < 0) ? Value(10 + abs(avg) / 20) : Value(10);
+            delta2 = (avg > 0) ? Value(10 + abs(avg) / 20) : Value(10);
+            alpha = std::max(avg - delta1,-VALUE_INFINITE);
+            beta  = std::min(avg + delta2, VALUE_INFINITE);
 
             // Adjust optimism based on root move's averageScore (~4 Elo)
             optimism[us]  = 132 * avg / (std::abs(avg) + 98);
@@ -382,7 +383,7 @@ void Search::Worker::iterative_deepening() {
                 if (bestValue <= alpha)
                 {
                     beta  = (alpha + beta) / 2;
-                    alpha = std::max(bestValue - delta, -VALUE_INFINITE);
+                    alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
 
                     failedHighCnt = 0;
                     if (mainThread)
@@ -390,13 +391,14 @@ void Search::Worker::iterative_deepening() {
                 }
                 else if (bestValue >= beta)
                 {
-                    beta = std::min(bestValue + delta, int(VALUE_INFINITE));
+                    beta = std::min(bestValue + delta2, int(VALUE_INFINITE));
                     ++failedHighCnt;
                 }
                 else
                     break;
 
-                delta += delta / 3;
+                delta1 += delta1 / 3;
+                delta2 += delta2 / 3;
 
                 assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
             }
@@ -526,7 +528,7 @@ void Search::Worker::clear() {
 
 
     for (int i = 1; i < MAX_MOVES; ++i)
-        reductions[i] = int((20.37 + std::log(size_t(options["Threads"])) / 2) * std::log(i));
+        reductions[i] = int((18.0 + std::log(size_t(options["Threads"])) / 2) * 0.4 * i * (1.0 - exp(-8.0 / i)));
 }
 
 
@@ -808,16 +810,16 @@ Value Search::Worker::search(
         return beta > VALUE_TB_LOSS_IN_MAX_PLY ? (eval + beta) / 2 : eval;
 
     // Step 9. Null move search with verification search (~35 Elo)
-    if (!PvNode && (ss - 1)->currentMove != Move::null() && (ss - 1)->statScore < 17787
-        && eval >= beta && eval >= ss->staticEval && ss->staticEval >= beta - 22 * depth + 313
-        && !excludedMove && pos.non_pawn_material(us) && ss->ply >= thisThread->nmpMinPly
-        && beta > VALUE_TB_LOSS_IN_MAX_PLY)
+    if (!PvNode && (ss - 1)->currentMove != Move::null() && (ss - 1)->statScore < 17787 && eval >= beta
+        && eval >= ss->staticEval && ss->staticEval >= beta - 22 * depth + 313 && !excludedMove
+        && thisThread->selDepth + 5 > thisThread->rootDepth && pos.non_pawn_material(us) 
+        && ss->ply >= thisThread->nmpMinPly && beta > VALUE_TB_LOSS_IN_MAX_PLY)
     {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth and eval
-        Depth R = std::min(int(eval - beta) / 144, 6) + depth / 3 + 4;
-
+        Depth R = std::max(1, int(2.8 * log(depth)) + std::min(int(eval - beta) / 144, 6) - (pos.non_pawn_material(us) <= BishopValue));
+        
         ss->currentMove         = Move::null();
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
 
