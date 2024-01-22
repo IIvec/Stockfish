@@ -527,8 +527,12 @@ void Search::Worker::clear() {
                     h->fill(-71);
 
 
+    double r = 18.0 + std::log(size_t(options["Threads"])) / 2;
     for (int i = 1; i < MAX_MOVES; ++i)
-        reductions[i] = int((18.0 + std::log(size_t(options["Threads"])) / 2) * 0.4 * i * (1.0 - exp(-8.0 / i)));
+    {
+        dreductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
+        mreductions[i] = int(r * log(i + 0.25 * log(i)));
+    }
 }
 
 

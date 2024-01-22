@@ -204,7 +204,7 @@ class Worker {
     Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
 
     Depth reduction(bool i, Depth d, int mn, int delta) {
-        int reductionScale = reductions[d] * reductions[mn];
+        int reductionScale = dreductions[d] * mreductions[mn];
         return (reductionScale + 1177 - int(delta) * 776 / int(rootDelta)) / 1024
              + (!i && reductionScale > 842);
     }
@@ -233,7 +233,8 @@ class Worker {
     size_t thread_idx;
 
     // Reductions lookup table initialized at startup
-    int reductions[MAX_MOVES];  // [depth or moveNumber]
+    int dreductions[MAX_MOVES];  // [depth]
+    int mreductions[MAX_MOVES];  // [moveNumber]
 
     // The main thread has a SearchManager, the others have a NullSearchManager
     std::unique_ptr<ISearchManager> manager;
