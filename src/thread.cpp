@@ -19,7 +19,6 @@
 #include "thread.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <deque>
 #include <memory>
@@ -92,7 +91,7 @@ void Thread::idle_loop() {
     // just check if running threads are below a threshold, in this case, all this
     // NUMA machinery is not needed.
     if (nthreads > 8)
-        WinProcGroup::bindThisThread(idx);
+        WinProcGroup::bind_this_thread(idx);
 
     while (true)
     {
@@ -211,7 +210,6 @@ void ThreadPool::start_thinking(const OptionsMap&  options,
         th->worker->rootPos.set(pos.fen(), pos.is_chess960(), &th->worker->rootState);
         th->worker->rootState = setupStates->back();
         th->worker->tbConfig  = tbConfig;
-        th->worker->effort    = {};
     }
 
     main_thread()->start_searching();
