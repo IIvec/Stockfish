@@ -235,7 +235,7 @@ void Search::Worker::iterative_deepening() {
     Value  bestValue     = -VALUE_INFINITE;
     Color  us            = rootPos.side_to_move();
     double timeReduction = 1, totBestMoveChanges = 0;
-    int    delta, iterIdx                        = 0;
+    int    delta1, delta2, iterIdx               = 0;
 
     // Allocate stack with extra size to allow access from (ss - 7) to (ss + 2):
     // (ss - 7) is needed for update_continuation_histories(ss - 1) which accesses (ss - 6),
@@ -310,9 +310,10 @@ void Search::Worker::iterative_deepening() {
 
             // Reset aspiration window starting size
             Value avg = rootMoves[pvIdx].averageScore;
-            delta     = 10 + avg * avg / 11480;
-            alpha     = std::max(avg - delta, -VALUE_INFINITE);
-            beta      = std::min(avg + delta, VALUE_INFINITE);
+            delta1 = (avg < 0) ? 10 + abs(avg) / 20 : 10;
+            delta2 = (avg > 0) ? 10 + abs(avg) / 20 : 10;
+            alpha = std::max(avg - delta1,-VALUE_INFINITE);
+            beta  = std::min(avg + delta2, VALUE_INFINITE);
 
             // Adjust optimism based on root move's averageScore (~4 Elo)
             optimism[us]  = 122 * avg / (std::abs(avg) + 92);
@@ -355,7 +356,7 @@ void Search::Worker::iterative_deepening() {
                 if (bestValue <= alpha)
                 {
                     beta  = (alpha + beta) / 2;
-                    alpha = std::max(bestValue - delta, -VALUE_INFINITE);
+                    alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
 
                     failedHighCnt = 0;
                     if (mainThread)
@@ -363,13 +364,14 @@ void Search::Worker::iterative_deepening() {
                 }
                 else if (bestValue >= beta)
                 {
-                    beta = std::min(bestValue + delta, VALUE_INFINITE);
+                    beta = std::min(bestValue + delta2, VALUE_INFINITE);
                     ++failedHighCnt;
                 }
                 else
                     break;
 
-                delta += delta / 3;
+                delta1 += delta1 / 3;
+                delta2 += delta2 / 3;
 
                 assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
             }
@@ -503,8 +505,11 @@ void Search::Worker::clear() {
                 for (auto& h : to)
                     h->fill(-65);
 
-    for (size_t i = 1; i < reductions.size(); ++i)
-        reductions[i] = int((20.14 + std::log(size_t(options["Threads"])) / 2) * std::log(i));
+    double r = 18.0 + log(size_t(options["Threads"])) / 2;
+    for (size_t i = 1; i < dreductions.size(); ++i)
+        dreductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
+    for (size_t i = 1; i < mreductions.size(); ++i)
+        mreductions[i] = int(r * log(i + 0.25 * log(i)));
 }
 
 
@@ -776,16 +781,16 @@ Value Search::Worker::search(
         return beta > VALUE_TB_LOSS_IN_MAX_PLY ? (eval + beta) / 2 : eval;
 
     // Step 9. Null move search with verification search (~35 Elo)
-    if (!PvNode && (ss - 1)->currentMove != Move::null() && (ss - 1)->statScore < 18001
+    if (!PvNode && (ss - 1)->currentMove != Move::null() && (ss - 1)->statScore < 18001 
         && eval >= beta && ss->staticEval >= beta - 21 * depth + 312 && !excludedMove
-        && pos.non_pawn_material(us) && ss->ply >= thisThread->nmpMinPly
-        && beta > VALUE_TB_LOSS_IN_MAX_PLY)
+        && thisThread->selDepth + 5 > thisThread->rootDepth && pos.non_pawn_material(us) 
+        && ss->ply >= thisThread->nmpMinPly && beta > VALUE_TB_LOSS_IN_MAX_PLY)
     {
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth and eval
-        Depth R = std::min(int(eval - beta) / 152, 6) + depth / 3 + 4;
-
+        Depth R = std::max(1, int(2.8 * log(depth)) + std::min(int(eval - beta) / 152, 6) - (pos.non_pawn_material(us) <= BishopValue));
+        
         ss->currentMove         = Move::null();
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
 
@@ -1632,7 +1637,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
 }
 
 Depth Search::Worker::reduction(bool i, Depth d, int mn, int delta) {
-    int reductionScale = reductions[d] * reductions[mn];
+    int reductionScale = dreductions[d] * mreductions[mn];
     return (reductionScale + 1150 - delta * 832 / rootDelta) / 1024 + (!i && reductionScale > 1025);
 }
 
