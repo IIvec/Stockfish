@@ -54,8 +54,8 @@ using namespace Search;
 
 namespace {
 
-static constexpr double EvalLevel[10] = {1.043, 1.017, 0.952, 1.009, 0.971,
-                                         1.002, 0.992, 0.947, 1.046, 1.001};
+static constexpr double EvalLevel[10] = {0.981, 0.956, 0.895, 0.949, 0.913,
+                                         0.942, 0.933, 0.890, 0.984, 0.941};
 
 // Futility margin
 Value futility_margin(Depth d, bool noTtCutNode, bool improving, bool oppWorsening) {
@@ -137,18 +137,15 @@ Search::Worker::Worker(SharedState&                    sharedState,
     // Unpack the SharedState struct into member variables
     thread_idx(thread_id),
     manager(std::move(sm)),
-    refreshTable(),
     options(sharedState.options),
     threads(sharedState.threads),
     tt(sharedState.tt),
-    networks(sharedState.networks) {
+    networks(sharedState.networks),
+    refreshTable(networks) {
     clear();
 }
 
 void Search::Worker::start_searching() {
-
-    // Initialize accumulator refresh entries
-    refreshTable.clear(networks);
 
     // Non-main threads go directly to iterative_deepening()
     if (!is_mainthread())
@@ -448,9 +445,10 @@ void Search::Worker::iterative_deepening() {
             double reduction = (1.48 + mainThread->previousTimeReduction) / (2.17 * timeReduction);
             double bestMoveInstability = 1 + 1.88 * totBestMoveChanges / threads.size();
             int    el                  = std::clamp((bestValue + 750) / 150, 0, 9);
+            double recapture           = limits.capSq == rootMoves[0].pv[0].to_sq() ? 0.955 : 1.005;
 
             double totalTime = mainThread->tm.optimum() * fallingEval * reduction
-                             * bestMoveInstability * EvalLevel[el];
+                             * bestMoveInstability * EvalLevel[el] * recapture;
 
             // Cap used time in case of a single legal move for a better viewer experience
             if (rootMoves.size() == 1)
@@ -510,6 +508,8 @@ void Search::Worker::clear() {
         dreductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
     for (size_t i = 1; i < mreductions.size(); ++i)
         mreductions[i] = int(r * log(i + 0.25 * log(i)));
+  
+  refreshTable.clear(networks);
 }
 
 
@@ -971,20 +971,22 @@ moves_loop:  // When in check, search starts here
 
             if (capture || givesCheck)
             {
+                Piece capturedPiece = pos.piece_on(move.to_sq());
+                int   captHist =
+                  thisThread->captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)];
+
                 // Futility pruning for captures (~2 Elo)
                 if (!givesCheck && lmrDepth < 7 && !ss->inCheck)
                 {
-                    Piece capturedPiece = pos.piece_on(move.to_sq());
-                    Value futilityValue =
-                      ss->staticEval + 285 + 277 * lmrDepth + PieceValue[capturedPiece]
-                      + thisThread->captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)]
-                          / 7;
+                    Value futilityValue = ss->staticEval + 285 + 277 * lmrDepth
+                                        + PieceValue[capturedPiece] + captHist / 7;
                     if (futilityValue <= alpha)
                         continue;
                 }
 
                 // SEE based pruning for captures and checks (~11 Elo)
-                if (!pos.see_ge(move, -203 * depth))
+                int seeHist = std::clamp(captHist / 32, -199 * depth, 199 * depth);
+                if (!pos.see_ge(move, -203 * depth - seeHist))
                     continue;
             }
             else
@@ -1071,7 +1073,12 @@ moves_loop:  // When in check, search starts here
                 // we assume this expected cut-node is not singular (multiple moves fail high),
                 // and we can prune the whole subtree by returning a softbound.
                 else if (singularBeta >= beta)
+                {
+                    if (!ttCapture)
+                        update_quiet_stats(pos, ss, *this, ttMove, -stat_malus(depth));
+
                     return singularBeta;
+                }
 
                 // Negative extensions
                 // If other moves failed high over (ttValue - margin) without the ttMove on a reduced search,
@@ -1121,6 +1128,9 @@ moves_loop:  // When in check, search starts here
         // Decrease reduction if position is or has been on the PV (~7 Elo)
         if (ss->ttPv)
             r -= 1 + (ttValue > alpha) + (tte->depth() >= depth);
+
+        else if (cutNode && move != ttMove && move != ss->killers[0])
+            r++;
 
         // Increase reduction for cut nodes (~4 Elo)
         if (cutNode)
