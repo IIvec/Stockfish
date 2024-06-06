@@ -24,8 +24,9 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <memory>
+#include <sstream>
+#include <tuple>
 
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
@@ -46,7 +47,7 @@ int Eval::simple_eval(const Position& pos, Color c) {
 
 bool Eval::use_smallnet(const Position& pos) {
     int simpleEval = simple_eval(pos, pos.side_to_move());
-    return std::abs(simpleEval) > 1018 + 5 * pos.count<PAWN>();
+    return std::abs(simpleEval) > 992;
 }
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
@@ -60,33 +61,33 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
 
     int  simpleEval = simple_eval(pos, pos.side_to_move());
     bool smallNet   = use_smallnet(pos);
-    int  nnueComplexity;
     int  v;
 
-    Value nnue = smallNet ? networks.small.evaluate(pos, &caches.small, true, &nnueComplexity)
-                          : networks.big.evaluate(pos, &caches.big, true, &nnueComplexity);
+    auto [psqt, positional] = smallNet ? networks.small.evaluate(pos, &caches.small)
+                                       : networks.big.evaluate(pos, &caches.big);
+
+    constexpr int delta          = 3;
+    Value         nnue           = ((128 - delta) * psqt + (128 + delta) * positional) / 128;
+    int           nnueComplexity = std::abs(psqt - positional);
 
     // Re-evaluate the position when higher eval accuracy is worth the time spent
-    if (smallNet && nnue * simpleEval < 0)
+    if (smallNet && (nnue * simpleEval < 0 || std::abs(nnue) < 250))
     {
-        nnue     = networks.big.evaluate(pos, &caches.big, true, &nnueComplexity);
-        smallNet = false;
+        std::tie(psqt, positional) = networks.big.evaluate(pos, &caches.big);
+        nnue                       = ((128 - delta) * psqt + (128 + delta) * positional) / 128;
+        nnueComplexity             = std::abs(psqt - positional);
+        smallNet                   = false;
     }
 
     // Blend optimism and eval with nnue complexity
-    optimism += optimism * nnueComplexity / 512;
-    nnue -= nnue * (nnueComplexity * 5 / 3) / 32082;
+    optimism += optimism * nnueComplexity / 470;
+    nnue -= nnue * nnueComplexity / 20000;
 
-    v = (nnue
-           * (32961 + 381 * pos.count<PAWN>() + 349 * pos.count<KNIGHT>()
-              + 392 * pos.count<BISHOP>() + 649 * pos.count<ROOK>() + 1211 * pos.count<QUEEN>())
-         + optimism
-             * (4835 + 136 * pos.count<PAWN>() + 375 * pos.count<KNIGHT>()
-                + 403 * pos.count<BISHOP>() + 628 * pos.count<ROOK>() + 1124 * pos.count<QUEEN>()))
-      / 36860;
+    int material = 600 * pos.count<PAWN>() + pos.non_pawn_material();
+    v            = (nnue * (68600 + material) + optimism * (8800 + material)) / 73344;
 
     // Damp down the evaluation linearly when shuffling
-    v = v * (204 - pos.rule50_count()) / 208;
+    v -= v * pos.rule50_count() / 212;
 
     // Guarantee evaluation does not hit the tablebase range
     v = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
@@ -111,8 +112,9 @@ std::string Eval::trace(Position& pos, const Eval::NNUE::Networks& networks) {
 
     ss << std::showpoint << std::showpos << std::fixed << std::setprecision(2) << std::setw(15);
 
-    Value v = networks.big.evaluate(pos, &caches->big, false);
-    v       = pos.side_to_move() == WHITE ? v : -v;
+    auto [psqt, positional] = networks.big.evaluate(pos, &caches->big);
+    Value v                 = psqt + positional;
+    v                       = pos.side_to_move() == WHITE ? v : -v;
     ss << "NNUE evaluation        " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)\n";
 
     v = evaluate(networks, pos, *caches, VALUE_ZERO);

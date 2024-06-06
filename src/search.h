@@ -32,18 +32,16 @@
 
 #include "misc.h"
 #include "movepick.h"
+#include "nnue/network.h"
+#include "nnue/nnue_accumulator.h"
+#include "numa.h"
 #include "position.h"
 #include "score.h"
 #include "syzygy/tbprobe.h"
 #include "timeman.h"
 #include "types.h"
-#include "nnue/nnue_accumulator.h"
 
 namespace Stockfish {
-
-namespace Eval::NNUE {
-struct Networks;
-}
 
 // Different node types, used as a template parameter
 enum NodeType {
@@ -133,19 +131,19 @@ struct LimitsType {
 // The UCI stores the uci options, thread pool, and transposition table.
 // This struct is used to easily forward data to the Search::Worker class.
 struct SharedState {
-    SharedState(const OptionsMap&           optionsMap,
-                ThreadPool&                 threadPool,
-                TranspositionTable&         transpositionTable,
-                const Eval::NNUE::Networks& nets) :
+    SharedState(const OptionsMap&                           optionsMap,
+                ThreadPool&                                 threadPool,
+                TranspositionTable&                         transpositionTable,
+                const NumaReplicated<Eval::NNUE::Networks>& nets) :
         options(optionsMap),
         threads(threadPool),
         tt(transpositionTable),
         networks(nets) {}
 
-    const OptionsMap&           options;
-    ThreadPool&                 threads;
-    TranspositionTable&         tt;
-    const Eval::NNUE::Networks& networks;
+    const OptionsMap&                           options;
+    ThreadPool&                                 threads;
+    TranspositionTable&                         tt;
+    const NumaReplicated<Eval::NNUE::Networks>& networks;
 };
 
 class Worker;
@@ -210,7 +208,7 @@ class SearchManager: public ISearchManager {
             Depth                     depth) const;
 
     Stockfish::TimeManagement tm;
-    int                       originalPly;
+    double                    originalTimeAdjust;
     int                       callsCnt;
     std::atomic_bool          ponder;
 
@@ -236,7 +234,7 @@ class NullSearchManager: public ISearchManager {
 // of the search history, and storing data required for the search.
 class Worker {
    public:
-    Worker(SharedState&, std::unique_ptr<ISearchManager>, size_t);
+    Worker(SharedState&, std::unique_ptr<ISearchManager>, size_t, NumaReplicatedAccessToken);
 
     // Called at instantiation to initialize Reductions tables
     // Reset histories, usually before a new game
@@ -246,7 +244,7 @@ class Worker {
     // It searches from the root position and outputs the "bestmove".
     void start_searching();
 
-    bool is_mainthread() const { return thread_idx == 0; }
+    bool is_mainthread() const { return threadIdx == 0; }
 
     // Public because they need to be updatable by the stats
     CounterMoveHistory    counterMoves;
@@ -267,12 +265,12 @@ class Worker {
     template<NodeType nodeType>
     Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth = 0);
 
-    Depth reduction(bool i, Depth d, int mn, int delta);
+    Depth reduction(bool i, Depth d, int mn, int delta) const;
 
     // Get a pointer to the search manager, only allowed to be called by the
     // main thread.
     SearchManager* main_manager() const {
-        assert(thread_idx == 0);
+        assert(threadIdx == 0);
         return static_cast<SearchManager*>(manager.get());
     }
 
@@ -293,7 +291,8 @@ class Worker {
     Depth     rootDepth, completedDepth;
     Value     rootDelta;
 
-    size_t thread_idx;
+    size_t                    threadIdx;
+    NumaReplicatedAccessToken numaAccessToken;
 
     // Reductions lookup table initialized at startup
     std::array<int, MAX_MOVES> dreductions, mreductions;  // [depth or moveNumber]
@@ -303,10 +302,10 @@ class Worker {
 
     Tablebases::Config tbConfig;
 
-    const OptionsMap&           options;
-    ThreadPool&                 threads;
-    TranspositionTable&         tt;
-    const Eval::NNUE::Networks& networks;
+    const OptionsMap&                           options;
+    ThreadPool&                                 threads;
+    TranspositionTable&                         tt;
+    const NumaReplicated<Eval::NNUE::Networks>& networks;
 
     // Used by NNUE
     Eval::NNUE::AccumulatorCaches refreshTable;

@@ -24,8 +24,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <iosfwd>
-#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,39 +41,28 @@ std::string compiler_info();
 // Preloads the given address in L1/L2 cache. This is a non-blocking
 // function that doesn't stall the CPU waiting for data to be loaded from memory,
 // which can be quite slow.
-void prefetch(void* addr);
+void prefetch(const void* addr);
 
-void  start_logger(const std::string& fname);
-void* std_aligned_alloc(size_t alignment, size_t size);
-void  std_aligned_free(void* ptr);
-// memory aligned by page size, min alignment: 4096 bytes
-void* aligned_large_pages_alloc(size_t size);
-// nop if mem == nullptr
-void aligned_large_pages_free(void* mem);
+void start_logger(const std::string& fname);
 
-// Deleter for automating release of memory area
-template<typename T>
-struct AlignedDeleter {
-    void operator()(T* ptr) const {
-        ptr->~T();
-        std_aligned_free(ptr);
+size_t str_to_size_t(const std::string& s);
+
+#if defined(__linux__)
+
+struct PipeDeleter {
+    void operator()(FILE* file) const {
+        if (file != nullptr)
+        {
+            pclose(file);
+        }
     }
 };
 
-template<typename T>
-struct LargePageDeleter {
-    void operator()(T* ptr) const {
-        ptr->~T();
-        aligned_large_pages_free(ptr);
-    }
-};
+#endif
 
-template<typename T>
-using AlignedPtr = std::unique_ptr<T, AlignedDeleter<T>>;
-
-template<typename T>
-using LargePagePtr = std::unique_ptr<T, LargePageDeleter<T>>;
-
+// Reads the file as bytes.
+// Returns std::nullopt if the file does not exist.
+std::optional<std::string> read_file_to_string(const std::string& path);
 
 void dbg_hit_on(bool cond, int slot = 0);
 void dbg_mean_of(int64_t value, int slot = 0);
@@ -88,6 +78,29 @@ inline TimePoint now() {
       .count();
 }
 
+inline std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
+    std::vector<std::string> res;
+
+    if (s.empty())
+        return res;
+
+    size_t begin = 0;
+    for (;;)
+    {
+        const size_t end = s.find(delimiter, begin);
+        if (end == std::string::npos)
+            break;
+
+        res.emplace_back(s.substr(begin, end - begin));
+        begin = end + delimiter.size();
+    }
+
+    res.emplace_back(s.substr(begin));
+
+    return res;
+}
+
+void remove_whitespace(std::string& s);
 
 enum SyncCout {
     IO_LOCK,
@@ -97,20 +110,6 @@ std::ostream& operator<<(std::ostream&, SyncCout);
 
 #define sync_cout std::cout << IO_LOCK
 #define sync_endl std::endl << IO_UNLOCK
-
-
-// Get the first aligned element of an array.
-// ptr must point to an array of size at least `sizeof(T) * N + alignment` bytes,
-// where N is the number of elements in the array.
-template<uintptr_t Alignment, typename T>
-T* align_ptr_up(T* ptr) {
-    static_assert(alignof(T) < Alignment);
-
-    const uintptr_t ptrint = reinterpret_cast<uintptr_t>(reinterpret_cast<char*>(ptr));
-    return reinterpret_cast<T*>(
-      reinterpret_cast<char*>((ptrint + (Alignment - 1)) / Alignment * Alignment));
-}
-
 
 // True if and only if the binary is compiled on a little-endian machine
 static inline const union {
@@ -192,15 +191,6 @@ inline uint64_t mul_hi64(uint64_t a, uint64_t b) {
     uint64_t c3 = aL * bH + uint32_t(c2);
     return aH * bH + (c2 >> 32) + (c3 >> 32);
 #endif
-}
-
-// Under Windows it is not possible for a process to run on more than one
-// logical processor group. This usually means being limited to using max 64
-// cores. To overcome this, some special platform-specific API should be
-// called to set group affinity for each thread. Original code from Texel by
-// Peter Österlund.
-namespace WinProcGroup {
-void bind_this_thread(size_t idx);
 }
 
 
