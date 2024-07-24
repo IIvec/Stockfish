@@ -779,7 +779,7 @@ Value Search::Worker::search(
         assert(eval - beta >= 0);
 
         // Null move dynamic reduction based on depth and eval
-        Depth R = std::max(1, int(2.8 * log(depth)) + std::min(int(eval - beta) / 202, 6) - (pos.non_pawn_material(us) <= BishopValue));
+        Depth R = std::max(1, int(3.2 * log(depth)) + std::min(int(eval - beta) / 202, 6));
         
         ss->currentMove         = Move::null();
         ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];

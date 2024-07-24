@@ -111,20 +111,20 @@ class Logger {
 }  // namespace
 
 
-// Returns the full name of the current CorChess 4 version.
+// Returns the full name of the current CorChess 4.5 version.
 //
 // For local dev compiles we try to append the commit SHA and
 // commit date from git. If that fails only the local compilation
 // date is set and "nogit" is specified:
-//      CorChess 4 dev-YYYYMMDD-SHA
+//      CorChess 4.5 dev-YYYYMMDD-SHA
 //      or
-//      CorChess 4 dev-YYYYMMDD-nogit
+//      CorChess 4.5 dev-YYYYMMDD-nogit
 //
 // For releases (non-dev builds) we only include the version number:
-//      CorChess 4 version
+//      CorChess 4.5 version
 std::string engine_info(bool to_uci) {
     std::stringstream ss;
-    ss << "CorChess 4 " << version << std::setfill('0');
+    ss << "CorChess 4.5 " << version << std::setfill('0');
 
     if constexpr (version == "dev")
     {
