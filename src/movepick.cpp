@@ -52,9 +52,7 @@ enum Stages {
     // generate qsearch moves
     QSEARCH_TT,
     QCAPTURE_INIT,
-    QCAPTURE,
-    QCHECK_INIT,
-    QCHECK
+    QCAPTURE
 };
 
 // Sort moves in descending order up to and including a given limit.
@@ -88,15 +86,13 @@ MovePicker::MovePicker(const Position&              p,
                        const ButterflyHistory*      mh,
                        const CapturePieceToHistory* cph,
                        const PieceToHistory**       ch,
-                       const PawnHistory*           ph,
-                       Move                         km) :
+                       const PawnHistory*           ph) :
     pos(p),
     mainHistory(mh),
     captureHistory(cph),
     continuationHistory(ch),
     pawnHistory(ph),
     ttMove(ttm),
-    killer(km),
     depth(d) {
 
     if (pos.checkers())
@@ -165,8 +161,6 @@ void MovePicker::score() {
             m.value += (*continuationHistory[2])[pc][to] / 3;
             m.value += (*continuationHistory[3])[pc][to];
             m.value += (*continuationHistory[5])[pc][to];
-
-            m.value += (m == killer) * 65536;
 
             // bonus for checks
             m.value += bool(pos.check_squares(pt) & to) * 16384;
@@ -316,24 +310,6 @@ top:
         return select<Next>([&]() { return pos.see_ge(*cur, threshold); });
 
     case QCAPTURE :
-        if (select<Next>([]() { return true; }))
-            return *(cur - 1);
-
-        // If we found no move and the depth is too low to try checks, then we have finished
-        if (depth <= DEPTH_QS_NORMAL)
-            return Move::none();
-
-        ++stage;
-        [[fallthrough]];
-
-    case QCHECK_INIT :
-        cur      = moves;
-        endMoves = generate<QUIET_CHECKS>(pos, cur);
-
-        ++stage;
-        [[fallthrough]];
-
-    case QCHECK :
         return select<Next>([]() { return true; });
     }
 
