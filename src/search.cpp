@@ -1138,7 +1138,7 @@ moves_loop:  // When in check, search starts here
 
         // Increase reduction for cut nodes (~4 Elo)
         if (cutNode)
-            r += 2 - (ttData.depth >= depth && ss->ttPv) + !ss->ttPv;
+            r += 2 - (ttData.depth >= depth && ss->ttPv);
 
         // Increase reduction if ttMove is a capture (~3 Elo)
         if (ttCapture)
@@ -1168,7 +1168,7 @@ moves_loop:  // When in check, search starts here
             // beyond the first move depth.
             // To prevent problems when the max value is less than the min value,
             // std::clamp has been replaced by a more robust implementation.
-            Depth d = std::max(1, std::min(newDepth - r, newDepth + 1));
+            Depth d = std::max(1, std::min(newDepth - r, newDepth + (PvNode || cutNode)));
 
             value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, d, true);
 
@@ -1178,7 +1178,7 @@ moves_loop:  // When in check, search starts here
                 // Adjust full-depth search based on LMR results - if the result was
                 // good enough search deeper, if it was bad enough search shallower.
                 const bool doDeeperSearch    = value > (bestValue + 35 + 2 * newDepth);  // (~1 Elo)
-                const bool doShallowerSearch = value < bestValue + newDepth;             // (~2 Elo)
+                const bool doShallowerSearch = value < bestValue + 8;                    // (~2 Elo)
 
                 newDepth += doDeeperSearch - doShallowerSearch;
 
@@ -1186,9 +1186,7 @@ moves_loop:  // When in check, search starts here
                     value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, newDepth, !cutNode);
 
                 // Post LMR continuation history updates (~1 Elo)
-                int bonus = value <= alpha ? -stat_malus(newDepth)
-                          : value >= beta  ? stat_bonus(newDepth)
-                                           : 0;
+                int bonus = value >= beta ? stat_bonus(newDepth) : -stat_malus(newDepth);
 
                 update_continuation_histories(ss, movedPiece, move.to_sq(), bonus);
             }
@@ -1281,9 +1279,9 @@ moves_loop:  // When in check, search starts here
 
         // In case we have an alternative move equal in eval to the current bestmove,
         // promote it to bestmove by pretending it just exceeds alpha (but not beta).
-        int inc = (value == bestValue && (int(nodes) & 15) == 0
-                   && ss->ply + 2 + ss->ply / 32 >= thisThread->rootDepth
-                   && std::abs(value) + 1 < VALUE_TB_WIN_IN_MAX_PLY);
+        int inc =
+          (value == bestValue && (int(nodes) & 15) == 0 && ss->ply + 2 >= thisThread->rootDepth
+           && std::abs(value) + 1 < VALUE_TB_WIN_IN_MAX_PLY);
 
         if (value + inc > bestValue)
         {
@@ -1367,6 +1365,10 @@ moves_loop:  // When in check, search starts here
             thisThread->pawnHistory[pawn_structure_index(pos)][pos.piece_on(prevSq)][prevSq]
               << stat_bonus(depth) * bonus / 25;
     }
+
+    // Bonus when search fails low and there is a TT move
+    else if (moveCount > 1 && ttData.move && (cutNode || PvNode))
+        thisThread->mainHistory[us][ttData.move.from_to()] << stat_bonus(depth) / 4;
 
     if (PvNode)
         bestValue = std::min(bestValue, maxValue);
@@ -1509,7 +1511,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Stand pat. Return immediately if static value is at least beta
         if (bestValue >= beta)
         {
-            if (std::abs(bestValue) < VALUE_TB_WIN_IN_MAX_PLY && !PvNode)
+            if (std::abs(bestValue) < VALUE_TB_WIN_IN_MAX_PLY)
                 bestValue = (3 * bestValue + beta) / 4;
             if (!ss->ttHit)
                 ttWriter.write(posKey, value_to_tt(bestValue, ss->ply), false, BOUND_LOWER,
