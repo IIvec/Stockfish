@@ -126,7 +126,6 @@ struct LimitsType {
     int                      movestogo, depth, mate, perft, infinite;
     uint64_t                 nodes;
     bool                     ponderMode;
-    Square                   capSq;
 };
 
 
@@ -314,6 +313,8 @@ class Worker {
     TimePoint elapsed() const;
     TimePoint elapsed_time() const;
 
+    Value evaluate(const Position&);
+
     LimitsType limits;
 
     size_t                pvIdx, pvLast;
@@ -349,6 +350,11 @@ class Worker {
 
     friend class Stockfish::ThreadPool;
     friend class SearchManager;
+};
+
+struct ConthistBonus {
+    int index;
+    int weight;
 };
 
 
