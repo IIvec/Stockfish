@@ -284,7 +284,7 @@ void Search::Worker::iterative_deepening() {
     Value  bestValue     = -VALUE_INFINITE;
     Color  us            = rootPos.side_to_move();
     double timeReduction = 1, totBestMoveChanges = 0;
-    int    delta1, delta2, iterIdx               = 0;
+    int    delta, iterIdx               = 0;
 
     // Allocate stack with extra size to allow access from (ss - 7) to (ss + 2):
     // (ss - 7) is needed for update_continuation_histories(ss - 1) which accesses (ss - 6),
@@ -365,11 +365,10 @@ void Search::Worker::iterative_deepening() {
             selDepth = 0;
 
             // Reset aspiration window starting size
+	    delta     = 5 + std::abs(rootMoves[pvIdx].meanSquaredScore) / 11834;
             Value avg = rootMoves[pvIdx].averageScore;
-            delta1 = (avg < 0) ? 10 + abs(avg) / 20 : 10;
-            delta2 = (avg > 0) ? 10 + abs(avg) / 20 : 10;
-            alpha = std::max(avg - delta1,-VALUE_INFINITE);
-            beta  = std::min(avg + delta2, VALUE_INFINITE);
+            alpha     = std::max(avg - delta,-VALUE_INFINITE);
+            beta      = std::min(avg + delta, VALUE_INFINITE);
 
             // Adjust optimism based on root move's averageScore
             optimism[us]  = 138 * avg / (std::abs(avg) + 84);
@@ -414,7 +413,7 @@ void Search::Worker::iterative_deepening() {
                 if (bestValue <= alpha)
                 {
                     beta  = (alpha + beta) / 2;
-                    alpha = std::max(bestValue - delta1, -VALUE_INFINITE);
+                    alpha = std::max(bestValue - delta, -VALUE_INFINITE);
 
                     failedHighCnt = 0;
                     if (mainThread)
@@ -422,14 +421,13 @@ void Search::Worker::iterative_deepening() {
                 }
                 else if (bestValue >= beta)
                 {
-                    beta = std::min(bestValue + delta2, VALUE_INFINITE);
+                    beta = std::min(bestValue + delta, VALUE_INFINITE);
                     ++failedHighCnt;
                 }
                 else
                     break;
 
-                delta1 += delta1 / 3;
-                delta2 += delta2 / 3;
+                delta += delta / 3;
 
                 assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
             }
