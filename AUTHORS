@@ -1,19 +1,18 @@
-# List of authors for Stockfish
-
-# Founders of the Stockfish project and fishtest infrastructure
+# Founders of the Stockfish project and Fishtest infrastructure
 Tord Romstad (romstad)
 Marco Costalba (mcostalba)
 Joona Kiiski (zamar)
 Gary Linscott (glinscott)
 
-# Authors and inventors of NNUE, training, NNUE port
+# Authors and inventors of NNUE, training, and NNUE port
 Yu Nasu (ynasu87)
 Motohiro Isozaki (yaneurao)
 Hisayori Noda (nodchip)
 
-# all other authors of the code in alphabetical order
+# All other authors of Stockfish code (in alphabetical order)
 Aditya (absimaldata)
 Adrian Petrescu (apetresc)
+Ahmed Kerimov (wcdbmv)
 Ajith Chandy Jose (ajithcj)
 Alain Savard (Rocky640)
 Alayan Feh (Alayan-stk-2)
@@ -21,6 +20,8 @@ Alexander Kure
 Alexander Pagel (Lolligerhans)
 Alfredo Menezes (lonfom169)
 Ali AlZhrani (Cooffe)
+Andreas Jan van der Meulen (Andyson007)
+Andreas Matthies (Matthies)
 Andrei Vetrov (proukornew)
 Andrew Grant (AndyGrant)
 Andrey Neporada (nepal)
@@ -30,6 +31,7 @@ Aram Tumanian (atumanian)
 Arjun Temurnikar
 Artem Solopiy (EntityFX)
 Auguste Pop
+Balazs Szilagyi
 Balint Pfliegel
 Ben Chaney (Chaneybenjamini)
 Ben Koshy (BKSpurgeon)
@@ -43,16 +45,22 @@ Bruno de Melo Costa (BM123499)
 Bruno Pellanda (pellanda)
 Bryan Cross (crossbr)
 candirufish
+Carlos Esparza Sánchez (ces42)
 Chess13234
+Chris Bao (sscg13)
 Chris Cain (ceebo)
+Ciekce
 clefrks
+Clemens L. (rn5f107s2)
+Cody Ho (aesrentai)
 Dale Weiler (graphitemaster)
-Dan Schmidt (dfannius)
 Daniel Axtens (daxtens)
 Daniel Dugovic (ddugovic)
+Daniel Monroe (Ergodice)
+Dan Schmidt (dfannius)
 Dariusz Orzechowski (dorzechowski)
-David Zar
 David (dav1312)
+David Zar
 Daylen Yang (daylen)
 Deshawn Mohan-Smith (GoldenRare)
 Dieter Dobbelaere (ddobbelaere)
@@ -63,63 +71,72 @@ Douglas Matos Gomes (dsmsgms)
 Dubslow
 Eduardo Cáceres (eduherminio)
 Eelco de Groot (KingDefender)
+Ehsan Rashid (erashid)
 Elvin Liu (solarlight2)
 erbsenzaehler
 Ernesto Gatti
-Linmiao Xu (linrock)
+evqsx
 Fabian Beuke (madnight)
 Fabian Fichter (ianfab)
 Fanael Linithien (Fanael)
 fanon
-Fauzi Akram Dabat (FauziAkram)
+Fauzi Akram Dabat (fauzi2)
 Felix Wittmann
 gamander
+Gabriele Lombardo (gabe)
+Gahtan Nahdi
 Gary Heckman (gheckman)
 George Sobala (gsobala)
 gguliash
 Giacomo Lorenzetti (G-Lorenz)
 Gian-Carlo Pascutto (gcp)
+Goh CJ (cj5716)
 Gontran Lemaire (gonlem)
 Goodkov Vasiliy Aleksandrovich (goodkov)
 Gregor Cramer
 GuardianRM
-Günther Demetz (pb00067, pb00068)
 Guy Vreuls (gvreuls)
+Günther Demetz (pb00067, pb00068)
 Henri Wiechers
 Hiraoka Takuya (HiraokaTakuya)
 homoSapiensSapiens
 Hongzhi Cheng
 Ivan Ivec (IIvec)
 Jacques B. (Timshel)
+Jake Senne (w1wwwwww)
 Jan Ondruš (hxim)
 Jared Kish (Kurtbusch, kurt22i)
-Jake Senne (w1wwwwww)
 Jarrod Torriero (DU-jdto)
-Jean Gauthier (OuaisBla)
+Jasper Shovelton (Beanie496)
 Jean-Francois Romang (jromang)
+Jean Gauthier (OuaisBla)
 Jekaa
 Jerry Donald Watson (jerrydonaldwatson)
 jjoshua2
-Jonathan Calovski (Mysseno)
 Jonathan Buladas Dumale (SFisGOD)
+Jonathan Calovski (Mysseno)
 Jonathan McDermid (jonathanmcdermid)
 Joost VandeVondele (vondele)
-Jörg Oster (joergoster)
 Joseph Ellis (jhellis3)
 Joseph R. Prostko
+Jörg Oster (joergoster)
 Julian Willemer (NightlyKing)
 jundery
 Justin Blanchard (UncombedCoconut)
 Kelly Wilson
 Ken Takusagawa
+Kenneth Lee (kennethlee33)
 Kian E (KJE-98)
 kinderchocolate
 Kiran Panditrao (Krgp)
 Kojirion
+Krisztián Peőcz
 Krystian Kuzniarek (kuzkry)
 Leonardo Ljubičić (ICCF World Champion)
 Leonid Pechenik (lp--)
+Li Ying (yl25946)
 Liam Keegan (lkeegan)
+Linmiao Xu (linrock)
 Linus Arver (listx)
 loco-loco
 Lub van den Berg (ElbertoOne)
@@ -130,6 +147,7 @@ Maciej Żenczykowski (zenczykowski)
 Malcolm Campbell (xoto10)
 Mark Tenzer (31m059)
 marotear
+Mathias Parnaudeau (mparnaudeau)
 Matt Ginsberg (mattginsberg)
 Matthew Lai (matthewlai)
 Matthew Sullivan (Matt14916)
@@ -151,16 +169,19 @@ Moez Jellouli (MJZ1977)
 Mohammed Li (tthsqe12)
 Muzhen J (XInTheDark)
 Nathan Rugg (nmrugg)
-Nick Pelling (nickpelling)
+Nguyen Pham (nguyenpham)
 Nicklas Persson (NicklasPersson)
+Nick Pelling (nickpelling)
 Niklas Fiekas (niklasf)
 Nikolay Kostov (NikolayIT)
-Nguyen Pham (nguyenpham)
 Norman Schmidt (FireFather)
 notruck
+Nour Berakdar (Nonlinear)
 Ofek Shochat (OfekShochat, ghostway)
 Ondrej Mosnáček (WOnder93)
+Ondřej Mišina (AndrovT)
 Oskar Werkelin Ahlin
+Ömer Faruk Tutkun (OmerFarukTutkun)
 Pablo Vazquez
 Panthee
 Pascal Romaret
@@ -170,16 +191,18 @@ Peter Schneider (pschneider1968)
 Peter Zsifkovits (CoffeeOne)
 PikaCat
 Praveen Kumar Tummala (praveentml)
+Prokop Randáček (ProkopRandacek)
 Rahul Dsilva (silversolver1)
 Ralph Stößer (Ralph Stoesser)
 Raminder Singh
 renouve
 Reuven Peleg (R-Peleg)
 Richard Lloyd (Richard-Lloyd)
+Robert Nürnberg (robertnurnberg)
 Rodrigo Exterckötter Tjäder
 Rodrigo Roim (roim)
-Ron Britvich (Britvich)
 Ronald de Man (syzygy1, syzygy)
+Ron Britvich (Britvich)
 rqs
 Rui Coelho (ruicoelhopedro)
 Ryan Schmitt
@@ -193,20 +216,25 @@ sf-x
 Shahin M. Shahin (peregrine)
 Shane Booth (shane31)
 Shawn Varghese (xXH4CKST3RXx)
+Shawn Xu (xu-shawn)
 Siad Daboul (Topologist)
 Stefan Geschwentner (locutus2)
 Stefano Cardanobile (Stefano80)
 Stefano Di Martino (StefanoD)
 Steinar Gunderson (sesse)
 Stéphane Nicolet (snicolet)
+Stephen Touset (stouset)
 Syine Mineta (MinetaS)
-Prokop Randáček (ProkopRandacek)
+Taras Vuk (TarasVuk)
 Thanar2
 thaspel
 theo77186
+TierynnB
+Ting-Hsuan Huang (fffelix-huang)
+Tobias Steinmann
+Tomasz Sobczyk (Sopel97)
 Tom Truscott
 Tom Vijlbrief (tomtor)
-Tomasz Sobczyk (Sopel97)
 Torsten Franz (torfranz, tfranzer)
 Torsten Hellwig (Torom)
 Tracey Emery (basepr1me)
@@ -214,11 +242,14 @@ tttak
 Unai Corzo (unaiic)
 Uri Blass (uriblass)
 Vince Negri (cuddlestmonkey)
+Viren
+Wencey Wang
+windfishballad
 xefoci7612
+Xiang Wang (KatyushaScarlet)
 zz4032
 
-
 # Additionally, we acknowledge the authors and maintainers of fishtest,
-# an amazing and essential framework for the development of Stockfish!
+# an amazing and essential framework for Stockfish development!
 #
-# https://github.com/glinscott/fishtest/blob/master/AUTHORS
+# https://github.com/official-stockfish/fishtest/blob/master/AUTHORS
