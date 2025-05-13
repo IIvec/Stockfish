@@ -143,6 +143,64 @@ using psqt_vec_t = int32x4_t;
 
 #endif
 
+struct Vec16Wrapper {
+#ifdef VECTOR
+    using type = vec_t;
+    static type add(const type& lhs, const type& rhs) { return vec_add_16(lhs, rhs); }
+    static type sub(const type& lhs, const type& rhs) { return vec_sub_16(lhs, rhs); }
+#else
+    using type = BiasType;
+    static type add(const type& lhs, const type& rhs) { return lhs + rhs; }
+    static type sub(const type& lhs, const type& rhs) { return lhs - rhs; }
+#endif
+};
+
+struct Vec32Wrapper {
+#ifdef VECTOR
+    using type = psqt_vec_t;
+    static type add(const type& lhs, const type& rhs) { return vec_add_psqt_32(lhs, rhs); }
+    static type sub(const type& lhs, const type& rhs) { return vec_sub_psqt_32(lhs, rhs); }
+#else
+    using type = PSQTWeightType;
+    static type add(const type& lhs, const type& rhs) { return lhs + rhs; }
+    static type sub(const type& lhs, const type& rhs) { return lhs - rhs; }
+#endif
+};
+
+enum UpdateOperation {
+    Add,
+    Sub
+};
+
+template<typename VecWrapper,
+         UpdateOperation... ops,
+         std::enable_if_t<sizeof...(ops) == 0, bool> = true>
+typename VecWrapper::type fused(const typename VecWrapper::type& in) {
+    return in;
+}
+
+template<typename VecWrapper,
+         UpdateOperation update_op,
+         UpdateOperation... ops,
+         typename T,
+         typename... Ts,
+         std::enable_if_t<is_all_same_v<typename VecWrapper::type, T, Ts...>, bool> = true,
+         std::enable_if_t<sizeof...(ops) == sizeof...(Ts), bool>                    = true>
+typename VecWrapper::type
+fused(const typename VecWrapper::type& in, const T& operand, const Ts&... operands) {
+    switch (update_op)
+    {
+    case Add :
+        return fused<VecWrapper, ops...>(VecWrapper::add(in, operand), operands...);
+    case Sub :
+        return fused<VecWrapper, ops...>(VecWrapper::sub(in, operand), operands...);
+    default :
+        static_assert(update_op == Add || update_op == Sub,
+                      "Only Add and Sub are currently supported.");
+        return typename VecWrapper::type();
+    }
+}
+
 // Returns the inverse of a permutation
 template<std::size_t Len>
 constexpr std::array<std::size_t, Len>
@@ -240,8 +298,7 @@ class SIMDTiling {
 
 
 // Input feature converter
-template<IndexType                                 TransformedFeatureDimensions,
-         Accumulator<TransformedFeatureDimensions> AccumulatorState::*accPtr>
+template<IndexType TransformedFeatureDimensions>
 class FeatureTransformer {
 
     // Number of output dimensions for one side
@@ -346,12 +403,12 @@ class FeatureTransformer {
         const auto& accumulatorState = accumulatorStack.latest();
 
         const Color perspectives[2]  = {pos.side_to_move(), ~pos.side_to_move()};
-        const auto& psqtAccumulation = (accumulatorState.*accPtr).psqtAccumulation;
+        const auto& psqtAccumulation = (accumulatorState.acc<HalfDimensions>()).psqtAccumulation;
         const auto  psqt =
           (psqtAccumulation[perspectives[0]][bucket] - psqtAccumulation[perspectives[1]][bucket])
           / 2;
 
-        const auto& accumulation = (accumulatorState.*accPtr).accumulation;
+        const auto& accumulation = (accumulatorState.acc<HalfDimensions>()).accumulation;
 
         for (IndexType p = 0; p < 2; ++p)
         {
