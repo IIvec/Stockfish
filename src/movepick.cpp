@@ -115,8 +115,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     threshold(th) {
     assert(!pos.checkers());
 
-    stage = PROBCUT_TT
-          + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm) && pos.see_ge(ttm, threshold));
+    stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
@@ -129,13 +128,15 @@ ExtMove* MovePicker::score(MoveList<Type>& ml) {
 
     Color us = pos.side_to_move();
 
-    [[maybe_unused]] Bitboard threatByLesser[QUEEN + 1];
+    [[maybe_unused]] Bitboard threatByLesser[KING + 1];
     if constexpr (Type == QUIETS)
     {
+        threatByLesser[PAWN]   = 0;
         threatByLesser[KNIGHT] = threatByLesser[BISHOP] = pos.attacks_by<PAWN>(~us);
         threatByLesser[ROOK] =
           pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatByLesser[KNIGHT];
         threatByLesser[QUEEN] = pos.attacks_by<ROOK>(~us) | threatByLesser[ROOK];
+        threatByLesser[KING]  = pos.attacks_by<QUEEN>(~us) | threatByLesser[QUEEN];
     }
 
     ExtMove* it = cur;
@@ -170,12 +171,10 @@ ExtMove* MovePicker::score(MoveList<Type>& ml) {
 
             // penalty for moving to a square threatened by a lesser piece
             // or bonus for escaping an attack by a lesser piece.
-            if (KNIGHT <= pt && pt <= QUEEN)
-            {
-                static constexpr int bonus[QUEEN + 1] = {0, 0, 144, 144, 256, 517};
-                int v = threatByLesser[pt] & to ? -95 : 100 * bool(threatByLesser[pt] & from);
-                m.value += bonus[pt] * v;
-            }
+            static constexpr int bonus[KING + 1] = {0, 0, 144, 144, 256, 517, 10000};
+            int v = threatByLesser[pt] & to ? -95 : 100 * bool(threatByLesser[pt] & from);
+            m.value += bonus[pt] * v;
+
 
             if (ply < LOW_PLY_HISTORY_SIZE)
                 m.value += 8 * (*lowPlyHistory)[ply][m.from_to()] / (1 + ply);
@@ -315,24 +314,5 @@ top:
 }
 
 void MovePicker::skip_quiet_moves() { skipQuiets = true; }
-
-// this function must be called after all quiet moves and captures have been generated
-bool MovePicker::can_move_king_or_pawn() const {
-
-    assert((GOOD_QUIET <= stage && stage <= BAD_QUIET) || stage == EVASION);
-
-    // Until good capture state no quiet moves are generated for comparison so simply assume king or pawns can move.
-    // Do the same for other states that don't have a valid available move list.
-    if ((GOOD_QUIET > stage || stage > BAD_QUIET) && stage != EVASION)
-        return true;
-
-    for (const ExtMove* m = moves; m < endGenerated; ++m)
-    {
-        PieceType movedPieceType = type_of(pos.moved_piece(*m));
-        if ((movedPieceType == PAWN || movedPieceType == KING) && pos.legal(*m))
-            return true;
-    }
-    return false;
-}
 
 }  // namespace Stockfish
