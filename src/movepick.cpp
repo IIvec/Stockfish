@@ -115,31 +115,36 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     threshold(th) {
     assert(!pos.checkers());
 
-    stage = PROBCUT_TT
-          + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm) && pos.see_ge(ttm, threshold));
+    stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
 // Captures are ordered by Most Valuable Victim (MVV), preferring captures
 // with a good history. Quiets moves are ordered using the history tables.
 template<GenType Type>
-void MovePicker::score() {
+ExtMove* MovePicker::score(MoveList<Type>& ml) {
 
     static_assert(Type == CAPTURES || Type == QUIETS || Type == EVASIONS, "Wrong type");
 
     Color us = pos.side_to_move();
 
-    [[maybe_unused]] Bitboard threatByLesser[QUEEN + 1];
+    [[maybe_unused]] Bitboard threatByLesser[KING + 1];
     if constexpr (Type == QUIETS)
     {
+        threatByLesser[PAWN]   = 0;
         threatByLesser[KNIGHT] = threatByLesser[BISHOP] = pos.attacks_by<PAWN>(~us);
         threatByLesser[ROOK] =
           pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatByLesser[KNIGHT];
         threatByLesser[QUEEN] = pos.attacks_by<ROOK>(~us) | threatByLesser[ROOK];
+        threatByLesser[KING]  = pos.attacks_by<QUEEN>(~us) | threatByLesser[QUEEN];
     }
 
-    for (auto& m : *this)
+    ExtMove* it = cur;
+    for (auto move : ml)
     {
+        ExtMove& m = *it++;
+        m          = move;
+
         const Square    from          = m.from_sq();
         const Square    to            = m.to_sq();
         const Piece     pc            = pos.moved_piece(m);
@@ -154,7 +159,7 @@ void MovePicker::score() {
         {
             // histories
             m.value = 2 * (*mainHistory)[us][m.from_to()];
-            m.value += 2 * (*pawnHistory)[pawn_structure_index(pos)][pc][to];
+            m.value += 2 * (*pawnHistory)[pawn_history_index(pos)][pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];
             m.value += (*continuationHistory[2])[pc][to];
@@ -166,12 +171,10 @@ void MovePicker::score() {
 
             // penalty for moving to a square threatened by a lesser piece
             // or bonus for escaping an attack by a lesser piece.
-            if (KNIGHT <= pt && pt <= QUEEN)
-            {
-                static constexpr int bonus[QUEEN + 1] = {0, 0, 144, 144, 256, 517};
-                int v = threatByLesser[pt] & to ? -95 : 100 * bool(threatByLesser[pt] & from);
-                m.value += bonus[pt] * v;
-            }
+            static constexpr int bonus[KING + 1] = {0, 0, 144, 144, 256, 517, 10000};
+            int v = threatByLesser[pt] & to ? -95 : 100 * bool(threatByLesser[pt] & from);
+            m.value += bonus[pt] * v;
+
 
             if (ply < LOW_PLY_HISTORY_SIZE)
                 m.value += 8 * (*lowPlyHistory)[ply][m.from_to()] / (1 + ply);
@@ -189,6 +192,7 @@ void MovePicker::score() {
             }
         }
     }
+    return it;
 }
 
 // Returns the next move satisfying a predicate function.
@@ -222,14 +226,16 @@ top:
 
     case CAPTURE_INIT :
     case PROBCUT_INIT :
-    case QCAPTURE_INIT :
-        cur = endBadCaptures = moves;
-        endCur = endCaptures = generate<CAPTURES>(pos, cur);
+    case QCAPTURE_INIT : {
+        MoveList<CAPTURES> ml(pos);
 
-        score<CAPTURES>();
+        cur = endBadCaptures = moves;
+        endCur = endCaptures = score<CAPTURES>(ml);
+
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
         ++stage;
         goto top;
+    }
 
     case GOOD_CAPTURE :
         if (select([&]() {
@@ -246,9 +252,10 @@ top:
     case QUIET_INIT :
         if (!skipQuiets)
         {
-            endCur = endGenerated = generate<QUIETS>(pos, cur);
+            MoveList<QUIETS> ml(pos);
 
-            score<QUIETS>();
+            endCur = endGenerated = score<QUIETS>(ml);
+
             partial_insertion_sort(cur, endCur, -3560 * depth);
         }
 
@@ -283,14 +290,16 @@ top:
 
         return Move::none();
 
-    case EVASION_INIT :
-        cur    = moves;
-        endCur = endGenerated = generate<EVASIONS>(pos, cur);
+    case EVASION_INIT : {
+        MoveList<EVASIONS> ml(pos);
 
-        score<EVASIONS>();
+        cur    = moves;
+        endCur = endGenerated = score<EVASIONS>(ml);
+
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
         ++stage;
         [[fallthrough]];
+    }
 
     case EVASION :
     case QCAPTURE :
@@ -305,19 +314,5 @@ top:
 }
 
 void MovePicker::skip_quiet_moves() { skipQuiets = true; }
-
-// this function must be called after all quiet moves and captures have been generated
-bool MovePicker::can_move_king_or_pawn() const {
-    // SEE negative captures shouldn't be returned in GOOD_CAPTURE stage
-    assert(stage > GOOD_CAPTURE && stage != EVASION_INIT);
-
-    for (const ExtMove* m = moves; m < endGenerated; ++m)
-    {
-        PieceType movedPieceType = type_of(pos.moved_piece(*m));
-        if ((movedPieceType == PAWN || movedPieceType == KING) && pos.legal(*m))
-            return true;
-    }
-    return false;
-}
 
 }  // namespace Stockfish
