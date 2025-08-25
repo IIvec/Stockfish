@@ -61,9 +61,6 @@ void syzygy_extend_pv(const OptionsMap&            options,
 
 using namespace Search;
 
-int cctune[2] = {180, 320};
-TUNE(cctune);
-
 namespace {
 
 constexpr int SEARCHEDLIST_CAPACITY = 32;
@@ -568,7 +565,7 @@ void Search::Worker::clear() {
                 for (auto& h : to)
                     h.fill(-529);
 
-    double r = cctune[0] / 10.0 + log(size_t(options["Threads"])) / 2;
+    double r = 18.0 + log(size_t(options["Threads"])) / 2;
     for (size_t i = 1; i < dreductions.size(); ++i)
         dreductions[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
     for (size_t i = 1; i < mreductions.size(); ++i)
@@ -868,8 +865,8 @@ Value Search::Worker::search(
     {
         assert((ss - 1)->currentMove != Move::null());
 
-        // Null move dynamic reduction based on depth and eval
-        Depth R = int(cctune[1] / 100.0 * log(depth)) + 2;
+        // Null move dynamic reduction based on depth
+        Depth R = int(3.2 * log(depth)) + 2;
         
         ss->currentMove                   = Move::null();
         ss->continuationHistory           = &continuationHistory[0][0][NO_PIECE][0];
