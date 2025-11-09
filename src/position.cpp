@@ -858,6 +858,10 @@ DirtyPiece Position::do_move(Move                      m,
             st->minorPieceKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
     }
 
+    // If en passant is impossible, then k will not change and we can prefetch earlier
+    if (tt && !checkEP)
+        prefetch(tt->first_entry(adjust_key50(k)));
+
     // Set capture piece
     st->capturedPiece = captured;
 
@@ -1104,6 +1108,8 @@ bool Position::see_ge(Move m, int threshold) const {
         return VALUE_ZERO >= threshold;
 
     Square from = m.from_sq(), to = m.to_sq();
+
+    assert(piece_on(from) != NO_PIECE);
 
     int swap = PieceValue[piece_on(to)] - threshold;
     if (swap < 0)
