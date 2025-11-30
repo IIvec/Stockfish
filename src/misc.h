@@ -134,10 +134,13 @@ class ValueList {
 
    public:
     std::size_t size() const { return size_; }
-    void        push_back(const T& value) { values_[size_++] = value; }
-    const T*    begin() const { return values_; }
-    const T*    end() const { return values_ + size_; }
-    const T&    operator[](int index) const { return values_[index]; }
+    void        push_back(const T& value) {
+        assert(size_ < MaxSize);
+        values_[size_++] = value;
+    }
+    const T* begin() const { return values_; }
+    const T* end() const { return values_ + size_; }
+    const T& operator[](int index) const { return values_[index]; }
 
    private:
     T           values_[MaxSize];
@@ -408,6 +411,15 @@ void move_to_front(std::vector<T>& vec, Predicate pred) {
     }
 }
 }
+
+#if defined(__GNUC__)
+    #define sf_always_inline __attribute__((always_inline))
+#elif defined(__MSVC)
+    #define sf_always_inline __forceinline
+#else
+    // do nothign for other compilers
+    #define sf_always_inline
+#endif
 
 #if defined(__GNUC__) && !defined(__clang__)
     #if __GNUC__ >= 13
