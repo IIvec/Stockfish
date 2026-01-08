@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #include <utility>
 
 #include "bitboard.h"
+#include "history.h"
 #include "misc.h"
 #include "movegen.h"
 #include "syzygy/tbprobe.h"
@@ -692,13 +693,14 @@ bool Position::gives_check(Move m) const {
 // to a StateInfo object. The move is assumed to be legal. Pseudo-legal
 // moves should be filtered out before this function is called.
 // If a pointer to the TT table is passed, the entry for the new position
-// will be prefetched
+// will be prefetched, and likewise for shared history.
 void Position::do_move(Move                      m,
                        StateInfo&                newSt,
                        bool                      givesCheck,
                        DirtyPiece&               dp,
                        DirtyThreats&             dts,
-                       const TranspositionTable* tt = nullptr) {
+                       const TranspositionTable* tt      = nullptr,
+                       const SharedHistories*    history = nullptr) {
 
     assert(m.is_ok());
     assert(&newSt != st);
@@ -853,6 +855,7 @@ void Position::do_move(Move                      m,
             k ^= Zobrist::psq[promotion][to];
             st->materialKey ^= Zobrist::psq[promotion][8 + pieceCount[promotion] - 1]
                              ^ Zobrist::psq[pc][8 + pieceCount[pc]];
+            st->nonPawnKey[us] ^= Zobrist::psq[promotion][to];
 
             if (promotionType <= BISHOP)
                 st->minorPieceKey ^= Zobrist::psq[promotion][to];
@@ -879,6 +882,15 @@ void Position::do_move(Move                      m,
     // If en passant is impossible, then k will not change and we can prefetch earlier
     if (tt && !checkEP)
         prefetch(tt->first_entry(adjust_key50(k)));
+
+    if (history)
+    {
+        prefetch(&history->pawn_entry(*this)[pc][to]);
+        prefetch(&history->pawn_correction_entry(*this));
+        prefetch(&history->minor_piece_correction_entry(*this));
+        prefetch(&history->nonpawn_correction_entry<WHITE>(*this));
+        prefetch(&history->nonpawn_correction_entry<BLACK>(*this));
+    }
 
     // Set capture piece
     st->capturedPiece = captured;
@@ -911,7 +923,7 @@ void Position::do_move(Move                      m,
 
         if (more_than_one(pawns))
         {
-            // If there are two pawns potentially being abled to capture and at least one
+            // If there are two pawns potentially being able to capture and at least one
             // is not pinned, ep is legal as there are no horizontal exposed checks
             if (!more_than_one(blockers_for_king(them) & pawns))
             {
@@ -1052,8 +1064,51 @@ inline void add_dirty_threat(
     dts->list.push_back({pc, threatened, s, threatenedSq, PutPiece});
 }
 
+#ifdef USE_AVX512ICL
+// Given a DirtyThreat template and bit offsets to insert the piece type and square, write the threats
+// present at the given bitboard.
+template<int SqShift, int PcShift>
+void write_multiple_dirties(const Position& p,
+                            Bitboard        mask,
+                            DirtyThreat     dt_template,
+                            DirtyThreats*   dts) {
+    static_assert(sizeof(DirtyThreat) == 4);
+
+    const __m512i board      = _mm512_loadu_si512(p.piece_array().data());
+    const __m512i AllSquares = _mm512_set_epi8(
+      63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41,
+      40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18,
+      17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+
+    const int dt_count = popcount(mask);
+    assert(dt_count <= 16);
+
+    const __m512i template_v = _mm512_set1_epi32(dt_template.raw());
+    auto*         write      = dts->list.make_space(dt_count);
+
+    // Extract the list of squares and upconvert to 32 bits. There are never more than 16
+    // incoming threats so this is sufficient.
+    __m512i threat_squares = _mm512_maskz_compress_epi8(mask, AllSquares);
+    threat_squares         = _mm512_cvtepi8_epi32(_mm512_castsi512_si128(threat_squares));
+
+    __m512i threat_pieces =
+      _mm512_maskz_permutexvar_epi8(0x1111111111111111ULL, threat_squares, board);
+
+    // Shift the piece and square into place
+    threat_squares = _mm512_slli_epi32(threat_squares, SqShift);
+    threat_pieces  = _mm512_slli_epi32(threat_pieces, PcShift);
+
+    const __m512i dirties =
+      _mm512_ternarylogic_epi32(template_v, threat_squares, threat_pieces, 254 /* A | B | C */);
+    _mm512_storeu_si512(reinterpret_cast<__m512i*>(write), dirties);
+}
+#endif
+
 template<bool PutPiece, bool ComputeRay>
-void Position::update_piece_threats(Piece pc, Square s, DirtyThreats* const dts) {
+void Position::update_piece_threats(Piece                     pc,
+                                    Square                    s,
+                                    DirtyThreats* const       dts,
+                                    [[maybe_unused]] Bitboard noRaysContaining) const {
     const Bitboard occupied     = pieces();
     const Bitboard rookQueens   = pieces(ROOK, QUEEN);
     const Bitboard bishopQueens = pieces(BISHOP, QUEEN);
@@ -1065,35 +1120,40 @@ void Position::update_piece_threats(Piece pc, Square s, DirtyThreats* const dts)
     const Bitboard rAttacks = attacks_bb<ROOK>(s, occupied);
     const Bitboard bAttacks = attacks_bb<BISHOP>(s, occupied);
 
-    Bitboard qAttacks = Bitboard(0);
-    if constexpr (ComputeRay)
-        qAttacks = rAttacks | bAttacks;
-    else if (type_of(pc) == QUEEN)
-        qAttacks = rAttacks | bAttacks;
+    Bitboard threatened = attacks_bb(pc, s, occupied) & occupied;
+    Bitboard sliders    = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
+    Bitboard incoming_threats =
+      (PseudoAttacks[KNIGHT][s] & knights) | (attacks_bb<PAWN>(s, WHITE) & blackPawns)
+      | (attacks_bb<PAWN>(s, BLACK) & whitePawns) | (PseudoAttacks[KING][s] & kings);
 
-    Bitboard threatened;
-
-    switch (type_of(pc))
+#ifdef USE_AVX512ICL
+    if (threatened)
     {
-    case PAWN :
-        threatened = PseudoAttacks[color_of(pc)][s];
-        break;
-    case BISHOP :
-        threatened = bAttacks;
-        break;
-    case ROOK :
-        threatened = rAttacks;
-        break;
-    case QUEEN :
-        threatened = qAttacks;
-        break;
+        if constexpr (PutPiece)
+        {
+            dts->threatenedSqs |= threatened;
+            dts->threateningSqs |= square_bb(s);
+        }
 
-    default :
-        threatened = PseudoAttacks[type_of(pc)][s];
+        DirtyThreat dt_template{pc, NO_PIECE, s, Square(0), PutPiece};
+        write_multiple_dirties<DirtyThreat::ThreatenedSqOffset, DirtyThreat::ThreatenedPcOffset>(
+          *this, threatened, dt_template, dts);
     }
 
-    threatened &= occupied;
+    Bitboard all_attackers = sliders | incoming_threats;
+    if (!all_attackers)
+        return;  // Square s is threatened iff there's at least one attacker
 
+    if constexpr (PutPiece)
+    {
+        dts->threatenedSqs |= square_bb(s);
+        dts->threateningSqs |= all_attackers;
+    }
+
+    DirtyThreat dt_template{NO_PIECE, pc, Square(0), s, PutPiece};
+    write_multiple_dirties<DirtyThreat::PcSqOffset, DirtyThreat::PcOffset>(*this, all_attackers,
+                                                                           dt_template, dts);
+#else
     while (threatened)
     {
         Square threatenedSq = pop_lsb(threatened);
@@ -1104,8 +1164,7 @@ void Position::update_piece_threats(Piece pc, Square s, DirtyThreats* const dts)
 
         add_dirty_threat<PutPiece>(dts, pc, threatenedPc, s, threatenedSq);
     }
-
-    Bitboard sliders = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
+#endif
 
     if constexpr (ComputeRay)
     {
@@ -1115,33 +1174,27 @@ void Position::update_piece_threats(Piece pc, Square s, DirtyThreats* const dts)
             Piece  slider   = piece_on(sliderSq);
 
             const Bitboard ray        = RayPassBB[sliderSq][s] & ~BetweenBB[sliderSq][s];
-            const Bitboard discovered = ray & qAttacks & occupied;
+            const Bitboard discovered = ray & (rAttacks | bAttacks) & occupied;
 
             assert(!more_than_one(discovered));
-            if (discovered)
+            if (discovered && (RayPassBB[sliderSq][s] & noRaysContaining) != noRaysContaining)
             {
                 const Square threatenedSq = lsb(discovered);
                 const Piece  threatenedPc = piece_on(threatenedSq);
                 add_dirty_threat<!PutPiece>(dts, slider, threatenedPc, sliderSq, threatenedSq);
             }
 
+#ifndef USE_AVX512ICL  // for ICL, direct threats were processed earlier (all_attackers)
             add_dirty_threat<PutPiece>(dts, slider, pc, sliderSq, s);
+#endif
         }
     }
     else
     {
-        while (sliders)
-        {
-            Square sliderSq = pop_lsb(sliders);
-            Piece  slider   = piece_on(sliderSq);
-            add_dirty_threat<PutPiece>(dts, slider, pc, sliderSq, s);
-        }
+        incoming_threats |= sliders;
     }
 
-    Bitboard incoming_threats =
-      (PseudoAttacks[KNIGHT][s] & knights) | (attacks_bb<PAWN>(s, WHITE) & blackPawns)
-      | (attacks_bb<PAWN>(s, BLACK) & whitePawns) | (PseudoAttacks[KING][s] & kings);
-
+#ifndef USE_AVX512ICL
     while (incoming_threats)
     {
         Square srcSq = pop_lsb(incoming_threats);
@@ -1152,6 +1205,7 @@ void Position::update_piece_threats(Piece pc, Square s, DirtyThreats* const dts)
 
         add_dirty_threat<PutPiece>(dts, srcPc, pc, srcSq, s);
     }
+#endif
 }
 
 // Helper used to do/undo a castling move. This is a bit
@@ -1183,8 +1237,6 @@ void Position::do_castling(Color               us,
     // Remove both pieces first since squares could overlap in Chess960
     remove_piece(Do ? from : to, dts);
     remove_piece(Do ? rfrom : rto, dts);
-    board[Do ? from : to] = board[Do ? rfrom : rto] =
-      NO_PIECE;  // remove_piece does not do this for us
     put_piece(make_piece(us, KING), Do ? to : from, dts);
     put_piece(make_piece(us, ROOK), Do ? rto : rfrom, dts);
 }

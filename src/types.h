@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -293,32 +293,38 @@ struct DirtyPiece {
 
 // Keep track of what threats change on the board (used by NNUE)
 struct DirtyThreat {
+    static constexpr int PcSqOffset         = 0;
+    static constexpr int ThreatenedSqOffset = 8;
+    static constexpr int ThreatenedPcOffset = 16;
+    static constexpr int PcOffset           = 20;
+
     DirtyThreat() { /* don't initialize data */ }
+    DirtyThreat(uint32_t raw) :
+        data(raw) {}
     DirtyThreat(Piece pc, Piece threatened_pc, Square pc_sq, Square threatened_sq, bool add) {
-        data = (add << 28) | (pc << 20) | (threatened_pc << 16) | (threatened_sq << 8) | (pc_sq);
+        data = (uint32_t(add) << 31) | (pc << PcOffset) | (threatened_pc << ThreatenedPcOffset)
+             | (threatened_sq << ThreatenedSqOffset) | (pc_sq << PcSqOffset);
     }
 
-    Piece  pc() const { return static_cast<Piece>(data >> 20 & 0xf); }
-    Piece  threatened_pc() const { return static_cast<Piece>(data >> 16 & 0xf); }
-    Square threatened_sq() const { return static_cast<Square>(data >> 8 & 0xff); }
-    Square pc_sq() const { return static_cast<Square>(data & 0xff); }
-    bool   add() const {
-        uint32_t b = data >> 28;
-        sf_assume(b == 0 || b == 1);
-        return b;
-    }
+    Piece  pc() const { return static_cast<Piece>(data >> PcOffset & 0xf); }
+    Piece  threatened_pc() const { return static_cast<Piece>(data >> ThreatenedPcOffset & 0xf); }
+    Square threatened_sq() const { return static_cast<Square>(data >> ThreatenedSqOffset & 0xff); }
+    Square pc_sq() const { return static_cast<Square>(data >> PcSqOffset & 0xff); }
+    bool   add() const { return data >> 31; }
+    uint32_t raw() const { return data; }
 
    private:
     uint32_t data;
 };
 
-using DirtyThreatList = ValueList<DirtyThreat, 80>;
-
 // A piece can be involved in at most 8 outgoing attacks and 16 incoming attacks.
 // Moving a piece also can reveal at most 8 discovered attacks.
 // This implies that a non-castling move can change at most (8 + 16) * 3 + 8 = 80 features.
 // By similar logic, a castling move can change at most (5 + 1 + 3 + 9) * 2 = 36 features.
-// Thus, 80 should work as an upper bound.
+// Thus, 80 should work as an upper bound. Finally, 16 entries are added to accommodate
+// unmasked vector stores near the end of the list.
+
+using DirtyThreatList = ValueList<DirtyThreat, 96>;
 
 struct DirtyThreats {
     DirtyThreatList list;
@@ -326,11 +332,6 @@ struct DirtyThreats {
     Square          prevKsq, ksq;
 
     Bitboard threatenedSqs, threateningSqs;
-};
-
-struct DirtyBoardData {
-    DirtyPiece   dp;
-    DirtyThreats dts;
 };
 
     #define ENABLE_INCR_OPERATORS_ON(T) \

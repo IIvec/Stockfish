@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -145,56 +145,28 @@ class FeatureTransformer {
     }
 
     inline void scale_weights(bool read) {
-        for (IndexType j = 0; j < InputDimensions; ++j)
-        {
-            WeightType* w = &weights[j * HalfDimensions];
-            for (IndexType i = 0; i < HalfDimensions; ++i)
-                w[i] = read ? w[i] * 2 : w[i] / 2;
-        }
-
-        for (IndexType i = 0; i < HalfDimensions; ++i)
-            biases[i] = read ? biases[i] * 2 : biases[i] / 2;
+        for (auto& w : weights)
+            w = read ? w * 2 : w / 2;
+        for (auto& b : biases)
+            b = read ? b * 2 : b / 2;
     }
 
     // Read network parameters
-    // TODO: This is ugly. Currently LEB128 on the entire L1 necessitates
-    // reading the weights into a combined array, and then splitting.
     bool read_parameters(std::istream& stream) {
-        read_leb_128<BiasType>(stream, biases);
+        read_leb_128(stream, biases);
 
         if (UseThreats)
         {
-            auto combinedWeights =
-              std::make_unique<std::array<WeightType, HalfDimensions * TotalInputDimensions>>();
-            auto combinedPsqtWeights =
-              std::make_unique<std::array<PSQTWeightType, TotalInputDimensions * PSQTBuckets>>();
+            read_little_endian<ThreatWeightType>(stream, threatWeights.data(),
+                                                 ThreatInputDimensions * HalfDimensions);
+            read_leb_128(stream, weights);
 
-            read_leb_128<WeightType>(stream, *combinedWeights);
-
-            std::copy(combinedWeights->begin(),
-                      combinedWeights->begin() + ThreatInputDimensions * HalfDimensions,
-                      std::begin(threatWeights));
-
-            std::copy(combinedWeights->begin() + ThreatInputDimensions * HalfDimensions,
-                      combinedWeights->begin()
-                        + (ThreatInputDimensions + InputDimensions) * HalfDimensions,
-                      std::begin(weights));
-
-            read_leb_128<PSQTWeightType>(stream, *combinedPsqtWeights);
-
-            std::copy(combinedPsqtWeights->begin(),
-                      combinedPsqtWeights->begin() + ThreatInputDimensions * PSQTBuckets,
-                      std::begin(threatPsqtWeights));
-
-            std::copy(combinedPsqtWeights->begin() + ThreatInputDimensions * PSQTBuckets,
-                      combinedPsqtWeights->begin()
-                        + (ThreatInputDimensions + InputDimensions) * PSQTBuckets,
-                      std::begin(psqtWeights));
+            read_leb_128(stream, threatPsqtWeights, psqtWeights);
         }
         else
         {
-            read_leb_128<WeightType>(stream, weights);
-            read_leb_128<PSQTWeightType>(stream, psqtWeights);
+            read_leb_128(stream, weights);
+            read_leb_128(stream, psqtWeights);
         }
 
         permute_weights();
@@ -218,20 +190,12 @@ class FeatureTransformer {
 
         if (UseThreats)
         {
-            auto combinedWeights =
-              std::make_unique<std::array<WeightType, HalfDimensions * TotalInputDimensions>>();
+            write_little_endian<ThreatWeightType>(stream, copy->threatWeights.data(),
+                                                  ThreatInputDimensions * HalfDimensions);
+            write_leb_128<WeightType>(stream, copy->weights);
+
             auto combinedPsqtWeights =
               std::make_unique<std::array<PSQTWeightType, TotalInputDimensions * PSQTBuckets>>();
-
-            std::copy(std::begin(copy->threatWeights),
-                      std::begin(copy->threatWeights) + ThreatInputDimensions * HalfDimensions,
-                      combinedWeights->begin());
-
-            std::copy(std::begin(copy->weights),
-                      std::begin(copy->weights) + InputDimensions * HalfDimensions,
-                      combinedWeights->begin() + ThreatInputDimensions * HalfDimensions);
-
-            write_leb_128<WeightType>(stream, *combinedWeights);
 
             std::copy(std::begin(copy->threatPsqtWeights),
                       std::begin(copy->threatPsqtWeights) + ThreatInputDimensions * PSQTBuckets,

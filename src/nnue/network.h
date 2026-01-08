@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -28,7 +28,6 @@
 #include <string>
 #include <string_view>
 #include <tuple>
-#include <utility>
 
 #include "../misc.h"
 #include "../types.h"
@@ -130,9 +129,9 @@ using NetworkSmall = Network<SmallNetworkArchitecture, SmallFeatureTransformer>;
 
 
 struct Networks {
-    Networks(std::unique_ptr<NetworkBig>&& nB, std::unique_ptr<NetworkSmall>&& nS) :
-        big(std::move(*nB)),
-        small(std::move(*nS)) {}
+    Networks(EvalFile bigFile, EvalFile smallFile) :
+        big(bigFile, EmbeddedNNUEType::BIG),
+        small(smallFile, EmbeddedNNUEType::SMALL) {}
 
     NetworkBig   big;
     NetworkSmall small;

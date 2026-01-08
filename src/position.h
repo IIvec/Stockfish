@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 namespace Stockfish {
 
 class TranspositionTable;
+struct SharedHistories;
 
 // StateInfo struct stores information needed to restore a Position object to
 // its previous state when we retract a move. Whenever a move is made on the
@@ -68,7 +69,6 @@ struct StateInfo {
 // 'draw by repetition' detection. Use a std::deque because pointers to
 // elements are not invalidated upon list resizing.
 using StateListPtr = std::unique_ptr<std::deque<StateInfo>>;
-
 
 // Position class stores information regarding the board representation as
 // pieces, side to move, hash keys, castling info, etc. Important methods are
@@ -140,7 +140,8 @@ class Position {
                  bool                      givesCheck,
                  DirtyPiece&               dp,
                  DirtyThreats&             dts,
-                 const TranspositionTable* tt);
+                 const TranspositionTable* tt,
+                 const SharedHistories*    worker);
     void undo_move(Move m);
     void do_null_move(StateInfo& newSt, const TranspositionTable& tt);
     void undo_null_move();
@@ -187,7 +188,10 @@ class Position {
 
     // Other helpers
     template<bool PutPiece, bool ComputeRay = true>
-    void update_piece_threats(Piece pc, Square s, DirtyThreats* const dts);
+    void update_piece_threats(Piece               pc,
+                              Square              s,
+                              DirtyThreats* const dts,
+                              Bitboard            noRaysContaining = -1ULL) const;
     void move_piece(Square from, Square to, DirtyThreats* const dts = nullptr);
     template<bool Do>
     void do_castling(Color               us,
@@ -372,7 +376,7 @@ inline void Position::move_piece(Square from, Square to, DirtyThreats* const dts
     Bitboard fromTo = from | to;
 
     if (dts)
-        update_piece_threats<false>(pc, from, dts);
+        update_piece_threats<false>(pc, from, dts, fromTo);
 
     byTypeBB[ALL_PIECES] ^= fromTo;
     byTypeBB[type_of(pc)] ^= fromTo;
@@ -381,7 +385,7 @@ inline void Position::move_piece(Square from, Square to, DirtyThreats* const dts
     board[to]   = pc;
 
     if (dts)
-        update_piece_threats<true>(pc, to, dts);
+        update_piece_threats<true>(pc, to, dts, fromTo);
 }
 
 inline void Position::swap_piece(Square s, Piece pc, DirtyThreats* const dts) {
@@ -400,7 +404,7 @@ inline void Position::swap_piece(Square s, Piece pc, DirtyThreats* const dts) {
 
 inline void Position::do_move(Move m, StateInfo& newSt, const TranspositionTable* tt = nullptr) {
     new (&scratch_dts) DirtyThreats;
-    do_move(m, newSt, gives_check(m), scratch_dp, scratch_dts, tt);
+    do_move(m, newSt, gives_check(m), scratch_dp, scratch_dts, tt, nullptr);
 }
 
 inline StateInfo* Position::state() const { return st; }

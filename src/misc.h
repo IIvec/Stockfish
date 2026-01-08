@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -134,6 +134,7 @@ class ValueList {
 
    public:
     std::size_t size() const { return size_; }
+    int         ssize() const { return int(size_); }
     void        push_back(const T& value) {
         assert(size_ < MaxSize);
         values_[size_++] = value;
@@ -141,6 +142,13 @@ class ValueList {
     const T* begin() const { return values_; }
     const T* end() const { return values_ + size_; }
     const T& operator[](int index) const { return values_[index]; }
+
+    T* make_space(size_t count) {
+        T* result = &values_[size_];
+        size_ += count;
+        assert(size_ <= MaxSize);
+        return result;
+    }
 
    private:
     T           values_[MaxSize];
@@ -414,10 +422,10 @@ void move_to_front(std::vector<T>& vec, Predicate pred) {
 
 #if defined(__GNUC__)
     #define sf_always_inline __attribute__((always_inline))
-#elif defined(__MSVC)
+#elif defined(_MSC_VER)
     #define sf_always_inline __forceinline
 #else
-    // do nothign for other compilers
+    // do nothing for other compilers
     #define sf_always_inline
 #endif
 

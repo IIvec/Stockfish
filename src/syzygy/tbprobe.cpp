@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <array>
 
 #include "../bitboard.h"
 #include "../misc.h"
@@ -584,7 +585,7 @@ int decompress_pairs(PairsData* d, uint64_t idx) {
     //       idx = k * d->span + idx % d->span    (2)
     //
     // So from (1) and (2) we can compute idx - I(K):
-    int diff = idx % d->span - d->span / 2;
+    int diff = int(idx % d->span - d->span / 2);
 
     // Sum the above to offset to find the offset corresponding to our idx
     offset += diff;
@@ -1092,7 +1093,7 @@ uint8_t* set_sizes(PairsData* d, uint8_t* data) {
     // See https://web.archive.org/web/20201106232444/http://www.larsson.dogma.net/dcc99.pdf
     std::vector<bool> visited(d->symlen.size());
 
-    for (std::size_t sym = 0; sym < d->symlen.size(); ++sym)
+    for (Sym sym = 0; sym < d->symlen.size(); ++sym)
         if (!visited[sym])
             d->symlen[sym] = set_symlen(d, sym, visited);
 
