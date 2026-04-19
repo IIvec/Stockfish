@@ -40,6 +40,15 @@ std::string pretty(Bitboard b);
 
 }  // namespace Stockfish::Bitboards
 
+#ifdef USE_AVX512
+// clang-format off
+inline const __m512i AllSquares = _mm512_set_epi8(
+    63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41,
+    40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18,
+    17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+// clang-format on
+#endif
+
 constexpr Bitboard FileABB = 0x0101010101010101ULL;
 constexpr Bitboard FileBBB = FileABB << 1;
 constexpr Bitboard FileCBB = FileABB << 2;
@@ -155,6 +164,9 @@ constexpr Bitboard pawn_attacks_bb(Bitboard b) {
                       : shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b);
 }
 
+constexpr Bitboard pawn_single_push_bb(Color c, Bitboard b) {
+    return c == WHITE ? shift<NORTH>(b) : shift<SOUTH>(b);
+}
 
 // Returns a bitboard representing an entire line (from board edge
 // to board edge) that intersects the two given squares. If the given squares
@@ -392,6 +404,18 @@ inline constexpr auto PseudoAttacks = []() constexpr {
         attacks[KNIGHT][s1] = Bitboards::pseudo_attacks(KNIGHT, s1);
         attacks[QUEEN][s1] = attacks[BISHOP][s1] = Bitboards::pseudo_attacks(BISHOP, s1);
         attacks[QUEEN][s1] |= attacks[ROOK][s1]  = Bitboards::pseudo_attacks(ROOK, s1);
+    }
+
+    return attacks;
+}();
+
+inline constexpr auto PawnPushOrAttacks = []() constexpr {
+    std::array<std::array<Bitboard, SQUARE_NB>, COLOR_NB> attacks{};
+
+    for (Square s1 = SQ_A1; s1 <= SQ_H8; ++s1)
+    {
+        attacks[WHITE][s1] = pawn_single_push_bb(WHITE, square_bb(s1)) | PseudoAttacks[WHITE][s1];
+        attacks[BLACK][s1] = pawn_single_push_bb(BLACK, square_bb(s1)) | PseudoAttacks[BLACK][s1];
     }
 
     return attacks;

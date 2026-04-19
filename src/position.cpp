@@ -290,9 +290,9 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
     const int wAdditionalQueens  = std::max((int) count<QUEEN>(WHITE) - 1, 0);
     const int bAdditionalQueens  = std::max((int) count<QUEEN>(BLACK) - 1, 0);
     if (wAdditionalKnights + wAdditionalBishops + wAdditionalRooks + wAdditionalQueens > 8 - wPawns)
-        return PositionSetError("Unsupported position. Too many major pieces for WHITE.");
+        return PositionSetError("Unsupported position. Too many pieces for WHITE.");
     if (bAdditionalKnights + bAdditionalBishops + bAdditionalRooks + bAdditionalQueens > 8 - bPawns)
-        return PositionSetError("Unsupported position. Too many major pieces for BLACK.");
+        return PositionSetError("Unsupported position. Too many pieces for BLACK.");
 
     // 2. Active color
     if (!(ss >> token))
@@ -363,7 +363,6 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
         else if (token >= 'A' && token <= 'H')
         {
             const Square rsqCandidate = make_square(File(token - 'A'), relative_rank(c, RANK_1));
-            ;
             if (piece_on(rsqCandidate) == rook)
                 rsq = rsqCandidate;
 
@@ -674,24 +673,6 @@ bool Position::legal(Move m) const {
     assert(color_of(moved_piece(m)) == us);
     assert(piece_on(square<KING>(us)) == make_piece(us, KING));
 
-    // En passant captures are a tricky special case. Because they are rather
-    // uncommon, we do it simply by testing whether the king is attacked after
-    // the move is made.
-    if (m.type_of() == EN_PASSANT)
-    {
-        Square   ksq      = square<KING>(us);
-        Square   capsq    = to - pawn_push(us);
-        Bitboard occupied = (pieces() ^ from ^ capsq) | to;
-
-        assert(to == ep_square());
-        assert(moved_piece(m) == make_piece(us, PAWN));
-        assert(piece_on(capsq) == make_piece(~us, PAWN));
-        assert(piece_on(to) == NO_PIECE);
-
-        return !(attacks_bb<ROOK>(ksq, occupied) & pieces(~us, QUEEN, ROOK))
-            && !(attacks_bb<BISHOP>(ksq, occupied) & pieces(~us, QUEEN, BISHOP));
-    }
-
     // Castling moves generation does not check if the castling path is clear of
     // enemy attacks, it is delayed at a later time: now!
     if (m.type_of() == CASTLING)
@@ -967,13 +948,22 @@ void Position::do_move(Move                      m,
     // Move the piece. The tricky Chess960 castling is handled earlier
     if (m.type_of() != CASTLING)
     {
+        Piece toPc = pc;
+        if (m.type_of() == PROMOTION)
+            toPc = make_piece(us, m.promotion_type());
+
         if (captured && m.type_of() != EN_PASSANT)
         {
             remove_piece(from, &dts);
-            swap_piece(to, pc, &dts);
+            swap_piece(to, toPc, &dts);
         }
-        else
+        else if (pc == toPc)
             move_piece(from, to, &dts);
+        else
+        {
+            remove_piece(from, &dts);
+            put_piece(toPc, to, &dts);
+        }
     }
 
     // If the moving piece is a pawn do some special extra work
@@ -1011,8 +1001,6 @@ void Position::do_move(Move                      m,
 
             assert(relative_rank(us, to) == RANK_8);
             assert(type_of(promotion) >= KNIGHT && type_of(promotion) <= QUEEN);
-
-            swap_piece(to, promotion, &dts);
 
             dp.add_pc = promotion;
             dp.add_sq = to;
@@ -1185,13 +1173,8 @@ void write_multiple_dirties(const Position& p,
                             DirtyThreats*   dts) {
     static_assert(sizeof(DirtyThreat) == 4);
 
-    const __m512i board      = _mm512_loadu_si512(p.piece_array().data());
-    const __m512i AllSquares = _mm512_set_epi8(
-      63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41,
-      40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18,
-      17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
-
-    const int dt_count = popcount(mask);
+    const __m512i board    = _mm512_loadu_si512(p.piece_array().data());
+    const int     dt_count = popcount(mask);
     assert(dt_count <= 16);
 
     const __m512i template_v = _mm512_set1_epi32(dt_template.raw());
@@ -1266,8 +1249,25 @@ void Position::update_piece_threats(Piece                     pc,
 
     Bitboard threatened = attacks_bb(pc, s, occupied) & occupiedNoK;
     Bitboard incoming_threats =
-      (PseudoAttacks[KNIGHT][s] & knights) | (attacks_bb<PAWN>(s, WHITE) & blackPawns)
-      | (attacks_bb<PAWN>(s, BLACK) & whitePawns) | (PseudoAttacks[KING][s] & kings);
+      (PseudoAttacks[KNIGHT][s] & knights) | (PseudoAttacks[KING][s] & kings);
+
+    // Compute both incoming and outgoing pawn threats. Incoming pawn pushers are only
+    // added if 'pc' is a pawn.
+    if (type_of(pc) == PAWN)
+    {
+        Bitboard whiteAttacks = PawnPushOrAttacks[WHITE][s];
+        Bitboard blackAttacks = PawnPushOrAttacks[BLACK][s];
+
+        threatened |= (color_of(pc) == WHITE ? whiteAttacks : blackAttacks) & pieces(PAWN);
+
+        incoming_threats |= whiteAttacks & blackPawns;
+        incoming_threats |= blackAttacks & whitePawns;
+    }
+    else
+    {
+        incoming_threats |=
+          (attacks_bb<PAWN>(s, WHITE) & blackPawns) | (attacks_bb<PAWN>(s, BLACK) & whitePawns);
+    }
 
 #ifdef USE_AVX512ICL
     if constexpr (PutPiece)
@@ -1410,7 +1410,7 @@ void Position::undo_null_move() {
 
 
 // Tests if the SEE (Static Exchange Evaluation)
-// value of move is greater or equal to the given threshold. We'll use an
+// value of the move is greater or equal to the given threshold. We'll use an
 // algorithm similar to alpha-beta pruning with a null window.
 bool Position::see_ge(Move m, int threshold) const {
 

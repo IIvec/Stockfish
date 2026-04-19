@@ -44,7 +44,6 @@ namespace Stockfish {
 
 constexpr auto BenchmarkCommand = "speedtest";
 
-constexpr auto StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 template<typename... Ts>
 struct overload: Ts... {
     using Ts::operator()...;
@@ -101,7 +100,7 @@ void UCIEngine::loop() {
         std::istringstream is(cmd);
 
         token.clear();  // Avoid a stale if getline() returns nothing or a blank line
-        is >> std::skipws >> token;
+        is >> token;
 
         if (token == "quit" || token == "stop")
             engine.stop();
@@ -155,10 +154,10 @@ void UCIEngine::loop() {
         {
             std::pair<std::optional<std::string>, std::string> files[2];
 
-            if (is >> std::skipws >> files[0].second)
+            if (is >> files[0].second)
                 files[0].first = files[0].second;
 
-            if (is >> std::skipws >> files[1].second)
+            if (is >> files[1].second)
                 files[1].first = files[1].second;
 
             engine.save_network(files);
@@ -249,7 +248,7 @@ void UCIEngine::bench(std::istream& args) {
     for (const auto& cmd : list)
     {
         std::istringstream is(cmd);
-        is >> std::skipws >> token;
+        is >> token;
 
         if (token == "go" || token == "eval")
         {
@@ -331,7 +330,7 @@ void UCIEngine::benchmark(std::istream& args) {
     for (const auto& cmd : setup.commands)
     {
         std::istringstream is(cmd);
-        is >> std::skipws >> token;
+        is >> token;
 
         if (token == "go")
         {
@@ -382,7 +381,7 @@ void UCIEngine::benchmark(std::istream& args) {
     for (const auto& cmd : setup.commands)
     {
         std::istringstream is(cmd);
-        is >> std::skipws >> token;
+        is >> token;
 
         if (token == "go")
         {
