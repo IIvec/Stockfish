@@ -30,7 +30,9 @@ using namespace Stockfish;
 #ifdef UNIVERSAL_BINARY
 namespace Stockfish {
 
-int main(int argc, char* argv[]);
+int main(int argc, char* argv[]);  // silence 'no previous declaration'
+
+__attribute__((used)) // keep main alive
 #endif
 
 int main(int argc, char* argv[]) {
@@ -49,5 +51,9 @@ int main(int argc, char* argv[]) {
 }
 
 #ifdef UNIVERSAL_BINARY
-}
+}  // namespace Stockfish
+
+    #ifdef UNIVERSAL_NEEDS_MAIN_SHIM
+int main(int argc, char* argv[]) { return Stockfish::main(argc, argv); }
+    #endif
 #endif

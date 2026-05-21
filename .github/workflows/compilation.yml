@@ -24,29 +24,29 @@ jobs:
         working-directory: src
         shell: ${{ matrix.config.shell }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
       - name: Install fixed GCC on Linux
         if: runner.os == 'Linux'
-        uses: egor-tensin/setup-gcc@eaa888eb19115a521fa72b65cd94fe1f25bbcaac # @v1.3
+        uses: egor-tensin/setup-gcc@a2861a8b8538f49cf2850980acccf6b05a1b2ae4 # v2.0
         with:
           version: 11
 
       - name: Setup msys and install required packages
         if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c # v2.31.1
         with:
           msystem: ${{ matrix.config.msys_sys }}
           install: mingw-w64-${{ matrix.config.msys_env }} make git zip
 
       - name: Download SDE package
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-        uses: petarpetrovt/setup-sde@f0fa5971dc275704531e94264dd23250c442aa41 # @v2.4
+        if: ${{ matrix.config.sde }}
+        uses: petarpetrovt/setup-sde@d230e06df0ca06ced70000e4a7fa62afc9a2001e # v4.0
         with:
           environmentVariableName: SDE_DIR
-          sdeVersion: 9.33.0
+          sdeVersion: 9.58.0
 
       - name: Download the used network from the fishtest framework
         run: make net
@@ -71,7 +71,7 @@ jobs:
             $COMPCXX -Q -march=native --help=target
           fi
 
-      # x86-64 with newer extensions tests
+      # Compile the configured release binary.
 
       - name: Compile ${{ matrix.config.binaries }} build
         run: |
@@ -82,127 +82,12 @@ jobs:
           mv ./stockfish$EXT ../stockfish-$NAME-$BINARY$EXT
 
       - name: Remove non src files
-        run: git clean -fx
+        run: git clean -fxd
 
       - name: Upload artifact for (pre)-release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.config.simple_name }} ${{ matrix.binaries }}
-          path: |
-             .
-             !.git
-             !.output
-
-  UniversalLinux:
-    name: Ubuntu x86-64 Universal
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Install GCC 15
-        uses: egor-tensin/setup-gcc@eaa888eb19115a521fa72b65cd94fe1f25bbcaac # @v1.3
-        with:
-          version: 15
-
-      - name: Download SDE package
-        uses: petarpetrovt/setup-sde@f0fa5971dc275704531e94264dd23250c442aa41 # @v2.4
-        with:
-          environmentVariableName: SDE_DIR
-          sdeVersion: 9.33.0
-
-      - name: Build universal binary
-        run: make -j4 -C src ARCH=x86-64-universal profile-build RUN_PREFIX="$SDE_DIR/sde -future --"
-
-      - name: Strip binary
-        run: strip src/stockfish
-
-      - name: Rename binary
-        run: mv src/stockfish stockfish-ubuntu-x86-64-universal
-
-      - name: Extract the bench number from the commit history
-        run: |
-          for hash in $(git rev-list -100 HEAD); do
-            benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
-          done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
-
-      - name: Check arch selection under SDE
-        run: ./scripts/check_universal.sh ./stockfish-ubuntu-x86-64-universal "$SDE_DIR/sde" "$benchref"
-
-      - name: Remove non src files
-        run: |
-          rm -fR src/temp_builds
-          git -C src clean -fx
-
-      - name: Upload artifact for (pre)-release
-        uses: actions/upload-artifact@v4
-        with:
-          name: ubuntu x86-64-universal
-          path: |
-             .
-             !.git
-             !.output
-
-  UniversalWindows:
-    name: Windows x86-64 Universal
-    runs-on: windows-2022
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Setup msys and install required packages
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: mingw64
-          install: mingw-w64-x86_64-gcc make git zip
-
-      - name: Download SDE package
-        uses: petarpetrovt/setup-sde@f0fa5971dc275704531e94264dd23250c442aa41 # @v2.4
-        with:
-          environmentVariableName: SDE_DIR
-          sdeVersion: 9.33.0
-
-      - name: Build universal binary
-        run: |
-          SDE_PATH=$(cygpath "$SDE_DIR")
-          make -j4 -C src ARCH=x86-64-universal profile-build RUN_PREFIX="$SDE_PATH/sde.exe -future --"
-
-      - name: Strip binary
-        run: strip src/stockfish.exe
-
-      - name: Rename binary
-        run: mv src/stockfish.exe stockfish-windows-x86-64-universal.exe
-
-      - name: Extract the bench number from the commit history
-        run: |
-          for hash in $(git rev-list -100 HEAD); do
-            benchref=$(git show -s $hash | tac | grep -m 1 -o -x '[[:space:]]*\b[Bb]ench[ :]\+[1-9][0-9]\{5,7\}\b[[:space:]]*' | sed 's/[^0-9]//g') && break || true
-          done
-          [[ -n "$benchref" ]] && echo "benchref=$benchref" >> $GITHUB_ENV && echo "From commit: $hash" && echo "Reference bench: $benchref" || echo "No bench found"
-
-      - name: Check arch selection under SDE
-        run: ./scripts/check_universal.sh ./stockfish-windows-x86-64-universal.exe "$SDE_DIR/sde" "$benchref"
-
-      - name: Remove non src files
-        run: |
-          rm -fR src/temp_builds
-          git -C src clean -fx
-
-      - name: Upload artifact for (pre)-release
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows x86-64-universal
           path: |
              .
              !.git

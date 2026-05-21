@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout SF repo 
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: Stockfish
@@ -20,11 +20,11 @@ jobs:
         run: make -j profile-build
 
       - name: Checkout matetrack repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: vondele/matetrack
           path: matetrack
-          ref: 6c8405fac9028ca66a077f5c96c918fec0ef8d1d
+          ref: b2c8c9599cd7173f537b28bba88f31690a6d6f62
           persist-credentials: false
 
       - name: matetrack install deps
@@ -33,7 +33,7 @@ jobs:
 
       - name: cache syzygy
         id: cache-syzygy
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
            path: |
               matetrack/3-4-5-wdl/
@@ -79,6 +79,18 @@ jobs:
             echo "At least one go-mate search did not yield expected mate, see matecheck4gm.out" >&2
             exit 1
           fi
+
+      - name: Run matetrack th1 multiPV
+        working-directory: matetrack
+        run: |
+          python matecheck.py --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile mates2000.epd --nodes 100000 --multiPV 4 | tee matecheck1mpv.out
+          ! grep "issues were detected" matecheck1mpv.out > /dev/null
+
+      - name: Run matetrack th4 multiPV
+        working-directory: matetrack
+        run: |
+          python matecheck.py --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile mates2000.epd --nodes 100000 --threads 4 --multiPV 4 | tee matecheck4mpv.out
+          ! grep "issues were detected" matecheck4mpv.out > /dev/null
 
       - name: Run matetrack th1 with --syzygy50MoveRule false
         working-directory: matetrack

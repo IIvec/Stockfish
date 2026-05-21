@@ -33,20 +33,17 @@ namespace Eval {
 // for the build process (profile-build and fishtest) to work. Do not change the
 // name of the macro or the location where this macro is defined, as it is used
 // in the Makefile/Fishtest.
-#define EvalFileDefaultNameBig "nn-f68ec79f0fe3.nnue"
-#define EvalFileDefaultNameSmall "nn-47fc8b7fff06.nnue"
+#define EvalFileDefaultName "nn-83a0d6daf7e5.nnue"
 
 namespace NNUE {
-struct Networks;
+class Network;
 struct AccumulatorCaches;
 class AccumulatorStack;
 }
 
-std::string trace(Position& pos, const Eval::NNUE::Networks& networks);
+std::string trace(Position& pos, const Eval::NNUE::Network& network);
 
-int   simple_eval(const Position& pos);
-bool  use_smallnet(const Position& pos);
-Value evaluate(const NNUE::Networks&          networks,
+Value evaluate(const NNUE::Network&           network,
                const Position&                pos,
                Eval::NNUE::AccumulatorStack&  accumulators,
                Eval::NNUE::AccumulatorCaches& caches,

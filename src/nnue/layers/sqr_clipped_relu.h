@@ -26,6 +26,7 @@
 #include <iosfwd>
 
 #include "../nnue_common.h"
+#include "../simd.h"
 
 namespace Stockfish::Eval::NNUE::Layers {
 
@@ -87,6 +88,55 @@ class SqrClippedReLU {
             words1 = _mm_srli_epi16(_mm_mulhi_epi16(words1, words1), 3);
 
             _mm_store_si128(&out[i], _mm_packs_epi16(words0, words1));
+        }
+        constexpr IndexType Start = NumChunks * 16;
+
+#elif defined(USE_LASX)
+        constexpr IndexType NumChunks = InputDimensions / 32;
+        const auto          in        = reinterpret_cast<const __m256i*>(input);
+        const auto          out       = reinterpret_cast<__m256i*>(output);
+        for (IndexType i = 0; i < NumChunks; ++i)
+        {
+            const __m256i words0 = __lasx_xvssrani_h_w(in[i * 4 + 1], in[i * 4 + 0], 0);
+            const __m256i words1 = __lasx_xvssrani_h_w(in[i * 4 + 3], in[i * 4 + 2], 0);
+            const __m256i sqr0   = __lasx_xvmuh_h(words0, words0);
+            const __m256i sqr1   = __lasx_xvmuh_h(words1, words1);
+            const __m256i packed = __lasx_xvssrlni_b_h(sqr1, sqr0, 3);
+            const __m256i permed = __lasx_xvpermi_d(packed, 0xD8);
+            __lasx_xvst(__lasx_xvshuf4i_w(permed, 0xD8), out + i, 0);
+        }
+        constexpr IndexType Start = NumChunks * 32;
+
+#elif defined(USE_LSX)
+        constexpr IndexType NumChunks = InputDimensions / 16;
+        const auto          in        = reinterpret_cast<const __m128i*>(input);
+        const auto          out       = reinterpret_cast<__m128i*>(output);
+        for (IndexType i = 0; i < NumChunks; ++i)
+        {
+            const __m128i words0 = __lsx_vssrani_h_w(in[i * 4 + 1], in[i * 4 + 0], 0);
+            const __m128i words1 = __lsx_vssrani_h_w(in[i * 4 + 3], in[i * 4 + 2], 0);
+            const __m128i sqr0   = __lsx_vmuh_h(words0, words0);
+            const __m128i sqr1   = __lsx_vmuh_h(words1, words1);
+            out[i]               = __lsx_vssrlni_b_h(sqr1, sqr0, 3);
+        }
+        constexpr IndexType Start = NumChunks * 16;
+
+#elif defined(USE_NEON)
+        static_assert(WeightScaleBits == 6);
+        constexpr IndexType NumChunks = InputDimensions / 16;
+        const auto          in        = reinterpret_cast<const int32x4_t*>(input);
+        const auto          out       = reinterpret_cast<int8x16_t*>(output);
+        for (IndexType i = 0; i < NumChunks; ++i)
+        {
+            const int16x8_t words0 =
+              vcombine_s16(vqmovn_s32(in[i * 4 + 0]), vqmovn_s32(in[i * 4 + 1]));
+            const int16x8_t words1 =
+              vcombine_s16(vqmovn_s32(in[i * 4 + 2]), vqmovn_s32(in[i * 4 + 3]));
+
+            const int16x8_t r0 = vshrq_n_s16(vqdmulhq_s16(words0, words0), 4);
+            const int16x8_t r1 = vshrq_n_s16(vqdmulhq_s16(words1, words1), 4);
+
+            out[i] = vcombine_s8(vqmovn_s16(r0), vqmovn_s16(r1));
         }
         constexpr IndexType Start = NumChunks * 16;
 

@@ -87,8 +87,7 @@
     #if defined(USE_PEXT)
         #include <immintrin.h>  // Header for _pext_u64() intrinsic
         #define pext(b, m) _pext_u64(b, m)
-    #else
-        #define pext(b, m) 0
+        #define pdep(b, m) _pdep_u64(b, m)
     #endif
 
 namespace Stockfish {
@@ -178,6 +177,18 @@ constexpr bool is_loss(Value value) {
 }
 
 constexpr bool is_decisive(Value value) { return is_win(value) || is_loss(value); }
+
+constexpr bool is_mate(Value value) {
+    assert(is_valid(value));
+    return value >= VALUE_MATE_IN_MAX_PLY;
+}
+
+constexpr bool is_mated(Value value) {
+    assert(is_valid(value));
+    return value <= VALUE_MATED_IN_MAX_PLY;
+}
+
+constexpr bool is_mate_or_mated(Value value) { return is_mate(value) || is_mated(value); }
 
 // In the code, we make the assumption that these values
 // are such that non_pawn_material() can be used to uniquely
@@ -330,8 +341,6 @@ struct DirtyThreats {
     DirtyThreatList list;
     Color           us;
     Square          prevKsq, ksq;
-
-    Bitboard threatenedSqs, threateningSqs;
 };
 
     #define ENABLE_INCR_OPERATORS_ON(T) \

@@ -31,6 +31,13 @@
 
 #include "types.h"
 
+#ifdef __aarch64__
+    #include <arm_acle.h>
+    #define USE_HYPERBOLA_QUINT
+#elif defined(__loongarch__) && __loongarch_grlen == 64
+    #define USE_HYPERBOLA_QUINT
+#endif
+
 namespace Stockfish {
 
 namespace Bitboards {
@@ -74,32 +81,75 @@ extern Bitboard BetweenBB[SQUARE_NB][SQUARE_NB];
 extern Bitboard LineBB[SQUARE_NB][SQUARE_NB];
 extern Bitboard RayPassBB[SQUARE_NB][SQUARE_NB];
 
+#ifdef USE_HYPERBOLA_QUINT
+
+inline Bitboard reverse_bb(Bitboard bb) {
+    #ifdef __aarch64__
+    return __rbitll(bb);
+    #else  // loongarch
+    Bitboard out;
+    asm("bitrev.d %0, %1" : "=r"(out) : "r"(bb));
+    return out;
+    #endif
+}
+
+// Hyperbola quintessence implementation for ARM, thanks to the availability of an
+// efficient bit reversal instruction.
+// See https://www.chessprogramming.org/Hyperbola_Quintessence
+struct Magic {
+    // For rooks: file attacks, rank attacks. For bishops: diagonal/antidiagonal
+    Bitboard mask1, mask2;
+    // Precomputed 2 * square_bb(sq), 2 * reverse(square_bb(sq))
+    Bitboard r, rr;
+
+    Bitboard hyperbola(Bitboard occupied, Bitboard mask) const {
+        Bitboard o   = occupied & mask;
+        Bitboard fwd = o - r;
+        Bitboard rev = reverse_bb(o) - rr;
+        return (fwd ^ reverse_bb(rev)) & mask;
+    }
+
+    Bitboard attacks_bb(Bitboard occupied) const {
+        return hyperbola(occupied, mask1) | hyperbola(occupied, mask2);
+    }
+};
+#else
 // Magic holds all magic bitboards relevant data for a single square
 struct Magic {
-    Bitboard  mask;
+    Bitboard mask;
+    #ifdef USE_PEXT
+    uint16_t* attacks;
+    Bitboard  pseudoAttacks;
+    #else
     Bitboard* attacks;
-#ifndef USE_PEXT
-    Bitboard magic;
-    unsigned shift;
-#endif
+    Bitboard  magic;
+    unsigned  shift;
+    #endif
 
     // Compute the attack's index using the 'magic bitboards' approach
     unsigned index(Bitboard occupied) const {
 
-#ifdef USE_PEXT
+    #ifdef USE_PEXT
         return unsigned(pext(occupied, mask));
-#else
+    #else
         if (Is64Bit)
             return unsigned(((occupied & mask) * magic) >> shift);
 
         unsigned lo = unsigned(occupied) & unsigned(mask);
         unsigned hi = unsigned(occupied >> 32) & unsigned(mask >> 32);
         return (lo * unsigned(magic) ^ hi * unsigned(magic >> 32)) >> shift;
-#endif
+    #endif
     }
 
-    Bitboard attacks_bb(Bitboard occupied) const { return attacks[index(occupied)]; }
+    Bitboard attacks_bb(Bitboard occupied) const {
+    #ifdef USE_PEXT
+        return pdep(attacks[index(occupied)], pseudoAttacks);
+    #else
+        return attacks[index(occupied)];
+    #endif
+    }
 };
+#endif
 
 extern Magic Magics[SQUARE_NB][2];
 
@@ -244,6 +294,17 @@ inline int popcount(Bitboard b) {
 #endif
 }
 
+inline constexpr int lsb_index64[64] = {
+  0,  47, 1,  56, 48, 27, 2,  60, 57, 49, 41, 37, 28, 16, 3,  61, 54, 58, 35, 52, 50, 42,
+  21, 44, 38, 32, 29, 23, 17, 11, 4,  62, 46, 55, 26, 59, 40, 36, 15, 53, 34, 51, 20, 43,
+  31, 22, 10, 45, 25, 39, 14, 33, 19, 30, 9,  24, 13, 18, 8,  12, 7,  6,  5,  63};
+
+constexpr int constexpr_lsb(uint64_t bb) {
+    assert(bb != 0);
+    constexpr uint64_t debruijn64 = 0x03F79D71B4CB0A89ULL;
+    return lsb_index64[((bb ^ (bb - 1)) * debruijn64) >> 58];
+}
+
 // Returns the least significant bit in a non-zero bitboard.
 inline Square lsb(Bitboard b) {
     assert(b);
@@ -338,17 +399,18 @@ constexpr Bitboard safe_destination(Square s, int step) {
 }
 
 constexpr Bitboard sliding_attack(PieceType pt, Square sq, Bitboard occupied) {
-    Bitboard  attacks             = 0;
-    Direction RookDirections[4]   = {NORTH, SOUTH, EAST, WEST};
-    Direction BishopDirections[4] = {NORTH_EAST, SOUTH_EAST, SOUTH_WEST, NORTH_WEST};
+    Bitboard            attacks = 0, dest = 0;
+    constexpr Direction RookDirections[4]   = {NORTH, SOUTH, EAST, WEST};
+    constexpr Direction BishopDirections[4] = {NORTH_EAST, SOUTH_EAST, SOUTH_WEST, NORTH_WEST};
 
     for (Direction d : (pt == ROOK ? RookDirections : BishopDirections))
     {
         Square s = sq;
-        while (safe_destination(s, d))
+        while ((dest = safe_destination(s, d)))
         {
-            attacks |= (s += d);
-            if (occupied & s)
+            attacks |= dest;
+            s += d;
+            if (occupied & dest)
             {
                 break;
             }
