@@ -659,7 +659,7 @@ void Search::Worker::clear() {
     for (size_t i = 1; i < mreductions.size(); ++i)
         mreductions[i] = int(r * log(i + 0.25 * log(i)));
   
-  refreshTable.clear(networks[numaAccessToken]);
+  refreshTable.clear(network[numaAccessToken]);
 }
 
 
