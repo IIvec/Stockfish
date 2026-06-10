@@ -23,7 +23,6 @@
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -59,19 +58,19 @@ class OptionsMap;
 namespace Search {
 
 struct PVMoves {
-    Move        moves[MAX_PLY + 1];
-    std::size_t length = 0;
+    Move  moves[MAX_PLY + 1];
+    usize length = 0;
 
     Move*       begin() { return moves; }
     const Move* begin() const { return moves; }
     Move*       end() { return moves + length; }
     const Move* end() const { return moves + length; }
 
-    Move&       operator[](std::size_t index) { return moves[index]; }
-    const Move& operator[](std::size_t index) const { return moves[index]; }
+    Move&       operator[](usize index) { return moves[index]; }
+    const Move& operator[](usize index) const { return moves[index]; }
 
-    bool        empty() const { return length == 0; }
-    std::size_t size() const { return length; }
+    bool  empty() const { return length == 0; }
+    usize size() const { return length; }
 
     void clear() { length = 0; }
 
@@ -80,7 +79,7 @@ struct PVMoves {
         moves[length++] = move;
     }
 
-    void resize(std::size_t newSize) {
+    void resize(usize newSize) {
         assert(newSize <= length);
         length = newSize;
     }
@@ -129,6 +128,9 @@ struct RootMove {
     explicit RootMove(Move m) { pv.push_back(m); }
     bool extract_ponder_from_tt(const TranspositionTable& tt, Position& pos);
     bool score_is_bound() const { return scoreLowerbound || scoreUpperbound; }
+    bool score_is_exact_loss() const {
+        return score != -VALUE_INFINITE && is_loss(score) && !score_is_bound();
+    }
     void unset_bound_flags() { scoreLowerbound = scoreUpperbound = false; }
     bool operator==(const Move& m) const { return pv[0] == m; }
     // Sort in descending order
@@ -136,18 +138,18 @@ struct RootMove {
         return m.score != score ? m.score < score : m.previousScore < previousScore;
     }
 
-    uint64_t effort           = 0;
-    Value    score            = -VALUE_INFINITE;
-    Value    previousScore    = -VALUE_INFINITE;
-    Value    averageScore     = -VALUE_INFINITE;
-    Value    meanSquaredScore = -VALUE_INFINITE * VALUE_INFINITE;
-    Value    uciScore         = -VALUE_INFINITE;
-    bool     scoreLowerbound  = false;
-    bool     scoreUpperbound  = false;
-    int      selDepth         = 0;
-    int      tbRank           = 0;
-    Value    tbScore;
-    PVMoves  pv;
+    u64     effort           = 0;
+    Value   score            = -VALUE_INFINITE;
+    Value   previousScore    = -VALUE_INFINITE;
+    Value   averageScore     = -VALUE_INFINITE;
+    Value   meanSquaredScore = -VALUE_INFINITE * VALUE_INFINITE;
+    Value   uciScore         = -VALUE_INFINITE;
+    bool    scoreLowerbound  = false;
+    bool    scoreUpperbound  = false;
+    int     selDepth         = 0;
+    int     tbRank           = 0;
+    Value   tbScore;
+    PVMoves pv, previousPV;
 };
 
 using RootMoves = std::vector<RootMove>;
@@ -169,7 +171,7 @@ struct LimitsType {
     std::vector<std::string> searchmoves;
     TimePoint                time[COLOR_NB], inc[COLOR_NB], npmsec, movetime, startTime;
     int                      movestogo, depth, mate, perft, infinite;
-    uint64_t                 nodes;
+    u64                      nodes;
     bool                     ponderMode;
 };
 
@@ -212,13 +214,13 @@ struct InfoShort {
 
 struct InfoFull: InfoShort {
     int              selDepth;
-    size_t           multiPV;
+    usize            multiPV;
     std::string_view wdl;
     std::string_view bound;
-    size_t           timeMs;
-    size_t           nodes;
-    size_t           nps;
-    size_t           tbHits;
+    usize            timeMs;
+    usize            nodes;
+    usize            nps;
+    usize            tbHits;
     std::string_view pv;
     int              hashfull;
 };
@@ -226,7 +228,7 @@ struct InfoFull: InfoShort {
 struct InfoIteration {
     int              depth;
     std::string_view currmove;
-    size_t           currmovenumber;
+    usize            currmovenumber;
 };
 
 // Skill structure is used to implement strength limit. If we have a UCI_Elo,
@@ -251,7 +253,7 @@ struct Skill {
     }
     bool enabled() const { return level < 20.0; }
     bool time_to_pick(Depth depth) const { return depth == 1 + int(level); }
-    Move pick_best(const RootMoves&, size_t multiPV);
+    Move pick_best(const RootMoves&, usize multiPV);
 
     double level;
     Move   best = Move::none();
@@ -295,7 +297,7 @@ class SearchManager: public ISearchManager {
     Value                bestPreviousAverageScore;
     bool                 stopOnPonderhit;
 
-    size_t id;
+    usize id;
 
     const UpdateContext& updates;
 };
@@ -312,9 +314,9 @@ class Worker {
    public:
     Worker(SharedState&,
            std::unique_ptr<ISearchManager>,
-           size_t,
-           size_t,
-           size_t,
+           usize,
+           usize,
+           usize,
            NumaReplicatedAccessToken);
 
     // Called at instantiation to initialize reductions tables.
@@ -373,9 +375,9 @@ class Worker {
 
     LimitsType limits;
 
-    size_t                pvIdx, pvLast;
-    std::atomic<uint64_t> nodes, tbHits, bestMoveChanges;
-    int                   selDepth, nmpMinPly;
+    size_t             pvIdx, pvLast;
+    RelaxedAtomic<u64> nodes, tbHits, bestMoveChanges;
+    int                selDepth, nmpMinPly;
 
     Value optimism[COLOR_NB];
 
@@ -385,9 +387,9 @@ class Worker {
     Depth     rootDepth;
     Value     rootDelta;
 
-    PVMoves lastIterationPV;
+    PVMoves lastIterationIdxPV;
 
-    size_t                    threadIdx, numaThreadIdx, numaTotal;
+    usize                     threadIdx, numaThreadIdx, numaTotal;
     NumaReplicatedAccessToken numaAccessToken;
 
     // Reductions lookup table initialized at startup

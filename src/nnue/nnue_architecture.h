@@ -60,19 +60,21 @@ struct NetworkArchitecture {
     static constexpr int       FC_1_OUTPUTS                 = L3;
 
     Layers::AffineTransformSparseInput<TransformedFeatureDimensions, FC_0_OUTPUTS + 1> fc_0;
-    Layers::SqrClippedReLU<FC_0_OUTPUTS + 1>                                           ac_sqr_0;
-    Layers::ClippedReLU<FC_0_OUTPUTS + 1>                                              ac_0;
+    Layers::SqrClippedReLU<FC_0_OUTPUTS + 1, WeightScaleBits + 1>                      ac_sqr_0;
+    Layers::ClippedReLU<FC_0_OUTPUTS + 1, WeightScaleBits + 1>                         ac_0;
     Layers::AffineTransform<FC_0_OUTPUTS * 2, FC_1_OUTPUTS>                            fc_1;
-    Layers::ClippedReLU<FC_1_OUTPUTS>                                                  ac_1;
+    Layers::ClippedReLU<FC_1_OUTPUTS, WeightScaleBits>                                 ac_1;
     Layers::AffineTransform<FC_1_OUTPUTS, 1>                                           fc_2;
 
     // Hash value embedded in the evaluation file
-    static constexpr std::uint32_t get_hash_value() {
+    static constexpr u32 get_hash_value() {
         // input slice hash
-        std::uint32_t hashValue = 0xEC42E90Du;
+        u32 hashValue = 0xEC42E90Du;
         hashValue ^= TransformedFeatureDimensions * 2;
 
         hashValue = decltype(fc_0)::get_hash_value(hashValue);
+        // TODO: considerincluding hash value of ac_sqr_0 in the overall hash value.
+        // For now omitted on purpose because hash value is not written by trainer yet
         hashValue = decltype(ac_0)::get_hash_value(hashValue);
         hashValue = decltype(fc_1)::get_hash_value(hashValue);
         hashValue = decltype(ac_1)::get_hash_value(hashValue);
@@ -95,8 +97,8 @@ struct NetworkArchitecture {
             && fc_2.write_parameters(stream);
     }
 
-    std::int32_t propagate(const TransformedFeatureType* transformedFeatures,
-                           const NNZInfo<L1>&            nnzInfo) const {
+    i32 propagate(const TransformedFeatureType* transformedFeatures,
+                  const NNZInfo<L1>&            nnzInfo) const {
         struct alignas(CacheLineSize) Buffer {
             alignas(CacheLineSize) typename decltype(fc_0)::OutputBuffer fc_0_out;
             alignas(CacheLineSize) typename decltype(ac_sqr_0)::OutputType
@@ -120,17 +122,24 @@ struct NetworkArchitecture {
         ac_1.propagate(buffer.fc_1_out, buffer.ac_1_out);
         fc_2.propagate(buffer.ac_1_out, buffer.fc_2_out);
 
-        // buffer.fc_0_out[FC_0_OUTPUTS] is such that 1.0 is equal to 127*(1<<WeightScaleBits) in
+        // max value for fwdOut is (L1 + L3) * HiddenMaxVal * WeightMaxVal
+        // for int8 activations and weights this is (L1 + L3) * 16129 making
+        // fwdOut safe from overflow until (L1 + L3) > 133,144
+        // first layer and last layer use WeightScaleBits + 1
+        i32 fwdOut = buffer.fc_2_out[0] + buffer.fc_0_out[FC_0_OUTPUTS];
+        // fwdOut is such that 1.0 is equal to HiddenOneVal*(1<<WeightScaleBits)*2 in
         // quantized form, but we want 1.0 to be equal to 600*OutputScale
-        std::int32_t fwdOut =
-          (buffer.fc_0_out[FC_0_OUTPUTS]) * (600 * OutputScale) / (127 * (1 << WeightScaleBits));
-        std::int32_t outputValue = buffer.fc_2_out[0] + fwdOut;
+        // to make overflow impossible we cast to i64
+        constexpr i64 multiplier = 600 * OutputScale;
+        constexpr i64 denominator =
+          static_cast<i64>(HiddenOneVal) * static_cast<i64>(1U << WeightScaleBits) * 2;
 
+        i32 outputValue = static_cast<i32>((static_cast<i64>(fwdOut) * multiplier) / denominator);
         return outputValue;
     }
 
-    std::size_t get_content_hash() const {
-        std::size_t h = 0;
+    usize get_content_hash() const {
+        usize h = 0;
         hash_combine(h, fc_0.get_content_hash());
         hash_combine(h, ac_sqr_0.get_content_hash());
         hash_combine(h, ac_0.get_content_hash());
@@ -146,7 +155,8 @@ struct NetworkArchitecture {
 
 template<>
 struct std::hash<Stockfish::Eval::NNUE::NetworkArchitecture> {
-    std::size_t operator()(const Stockfish::Eval::NNUE::NetworkArchitecture& arch) const noexcept {
+    Stockfish::usize
+    operator()(const Stockfish::Eval::NNUE::NetworkArchitecture& arch) const noexcept {
         return arch.get_content_hash();
     }
 };

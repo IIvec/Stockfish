@@ -20,7 +20,7 @@ jobs:
           version: 15
 
       - name: Download SDE package
-        uses: petarpetrovt/setup-sde@d230e06df0ca06ced70000e4a7fa62afc9a2001e # v4.0
+        uses: petarpetrovt/setup-sde@31aa4a8e85e109bef00f1d838613fcc6ec421271 # v5.0
         with:
           environmentVariableName: SDE_DIR
           sdeVersion: 9.58.0
@@ -75,7 +75,7 @@ jobs:
           install: mingw-w64-x86_64-gcc make git zip
 
       - name: Download SDE package
-        uses: petarpetrovt/setup-sde@d230e06df0ca06ced70000e4a7fa62afc9a2001e # v4.0
+        uses: petarpetrovt/setup-sde@31aa4a8e85e109bef00f1d838613fcc6ec421271 # v5.0
         with:
           environmentVariableName: SDE_DIR
           sdeVersion: 9.58.0
@@ -136,7 +136,7 @@ jobs:
           sudo apt-get install -y qemu-user
 
       - name: Build universal binary
-        run: make -j4 -C src ARCH=armv8-universal profile-build
+        run: make -j4 -C src ARCH=arm64-universal profile-build
 
       - name: Strip binary
         run: strip src/stockfish
@@ -185,7 +185,7 @@ jobs:
           install: mingw-w64-clang-aarch64-clang make git zip
 
       - name: Build universal binary
-        run: make -j4 -C src ARCH=armv8-universal profile-build COMP=clang COMPCXX=clang++
+        run: make -j4 -C src ARCH=arm64-universal profile-build COMP=clang COMPCXX=clang++
 
       - name: Strip binary
         run: strip src/stockfish.exe
@@ -213,6 +213,43 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows arm64-universal
+          path: |
+             .
+             !.git
+             !.output
+
+  UniversalMacOS:
+    name: macOS
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # macos-15 is Apple silicon; Rosetta 2 is needed to exercise the x86-64 slice
+      - name: Install Rosetta 2
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      - name: Build universal binary
+        run: make -j4 -C src macos-lipo COMP=clang
+
+      - name: Rename binary
+        run: mv src/stockfish stockfish-macos-universal
+
+      - name: Verify binary runs natively and under Rosetta
+        run: ./scripts/check_universal_macos.sh ./stockfish-macos-universal
+
+      - name: Remove non-src files
+        run: git clean -fxd -- src
+
+      - name: Upload artifact for (pre)-release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos universal
           path: |
              .
              !.git

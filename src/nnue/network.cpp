@@ -46,23 +46,13 @@
 // Note that this does not work in Microsoft Visual Studio.
 #if !defined(UNIVERSAL_BINARY) && !defined(_MSC_VER) && !defined(NNUE_EMBEDDING_OFF)
 INCBIN(EmbeddedNNUE, EvalFileDefaultName);
+#elif defined(UNIVERSAL_BINARY_MACOS_X86_SLICE)
+// Determined at runtime, see universal/nnue_embed.cpp
+extern const unsigned char* const gEmbeddedNNUEData;
+extern const unsigned int         gEmbeddedNNUESize;
 #elif defined(UNIVERSAL_BINARY)
-    // When building for the universal binary, use C++26 #embed with weak symbols so that a
-    // separate, non-LTO nnue_embed.o (with strong symbols) can override them during the LTO link,
-    // (INCBIN can't deduplicate.)
-    #define WEAK_SYM __attribute__((weak))
-extern const unsigned char gEmbeddedNNUEData[] WEAK_SYM =
-    #ifdef __has_embed
-  {
-        #embed EvalFileDefaultName
-};
-const int padding = 0;
-    #else
-        #include "../universal/network_dump.inc"
-  ;
-const int padding = 1;  // trailing NUL byte
-    #endif
-extern const unsigned int gEmbeddedNNUESize WEAK_SYM = sizeof(gEmbeddedNNUEData) - padding;
+extern const unsigned char gEmbeddedNNUEData[];
+extern const unsigned int  gEmbeddedNNUESize;
 #else
 const unsigned char gEmbeddedNNUEData[1] = {0x0};
 const unsigned int  gEmbeddedNNUESize    = 1;
@@ -77,8 +67,8 @@ namespace Detail {
 template<typename T>
 bool read_parameters(std::istream& stream, T& reference) {
 
-    std::uint32_t header;
-    header = read_little_endian<std::uint32_t>(stream);
+    u32 header;
+    header = read_little_endian<u32>(stream);
     if (!stream || header != T::get_hash_value())
         return false;
     return reference.read_parameters(stream);
@@ -88,7 +78,7 @@ bool read_parameters(std::istream& stream, T& reference) {
 template<typename T>
 bool write_parameters(std::ostream& stream, const T& reference) {
 
-    write_little_endian<std::uint32_t>(stream, T::get_hash_value());
+    write_little_endian<u32>(stream, T::get_hash_value());
     return reference.write_parameters(stream);
 }
 
@@ -152,7 +142,7 @@ NetworkOutput Network::evaluate(const Position&    pos,
                                 AccumulatorStack&  accumulatorStack,
                                 AccumulatorCaches& cache) const {
 
-    constexpr uint64_t alignment = CacheLineSize;
+    constexpr u64 alignment = CacheLineSize;
 
     alignas(alignment) TransformedFeatureType transformedFeatures[FeatureTransformer::BufferSize];
 
@@ -198,7 +188,7 @@ void Network::verify(std::string                                  evalfilePath,
 
     if (f)
     {
-        size_t size = sizeof(featureTransformer) + sizeof(NetworkArchitecture) * LayerStacks;
+        usize size = sizeof(featureTransformer) + sizeof(NetworkArchitecture) * LayerStacks;
         f("NNUE evaluation using " + evalfilePath + " (" + std::to_string(size / (1024 * 1024))
           + "MiB, (" + std::to_string(featureTransformer.InputDimensions) + ", "
           + std::to_string(network[0].TransformedFeatureDimensions) + ", "
@@ -212,7 +202,7 @@ NnueEvalTrace Network::trace_evaluate(const Position&    pos,
                                       AccumulatorStack&  accumulatorStack,
                                       AccumulatorCaches& cache) const {
 
-    constexpr uint64_t alignment = CacheLineSize;
+    constexpr u64 alignment = CacheLineSize;
 
     alignas(alignment) TransformedFeatureType transformedFeatures[FeatureTransformer::BufferSize];
 
@@ -251,14 +241,19 @@ void Network::load_internal() {
     // C++ way to prepare a buffer for a memory stream
     class MemoryBuffer: public std::basic_streambuf<char> {
        public:
-        MemoryBuffer(char* p, size_t n) {
+        MemoryBuffer(char* p, usize n) {
             setg(p, p, p + n);
             setp(p, p + n);
         }
     };
 
+#ifdef UNIVERSAL_BINARY_MACOS_X86_SLICE
+    if (gEmbeddedNNUEData == nullptr)  // failed embedded load
+        return;
+#endif
+
     MemoryBuffer buffer(const_cast<char*>(reinterpret_cast<const char*>(gEmbeddedNNUEData)),
-                        size_t(gEmbeddedNNUESize));
+                        usize(gEmbeddedNNUESize));
 
     std::istream stream(&buffer);
     auto         description = load(stream);
@@ -292,11 +287,11 @@ std::optional<std::string> Network::load(std::istream& stream) {
 }
 
 
-std::size_t Network::get_content_hash() const {
+usize Network::get_content_hash() const {
     if (!initialized)
         return 0;
 
-    std::size_t h = 0;
+    usize h = 0;
     hash_combine(h, featureTransformer);
     for (auto&& layerstack : network)
         hash_combine(h, layerstack);
@@ -305,12 +300,12 @@ std::size_t Network::get_content_hash() const {
 }
 
 // Read network header
-bool Network::read_header(std::istream& stream, std::uint32_t* hashValue, std::string* desc) const {
-    std::uint32_t version, size;
+bool Network::read_header(std::istream& stream, u32* hashValue, std::string* desc) const {
+    u32 version, size;
 
-    version    = read_little_endian<std::uint32_t>(stream);
-    *hashValue = read_little_endian<std::uint32_t>(stream);
-    size       = read_little_endian<std::uint32_t>(stream);
+    version    = read_little_endian<u32>(stream);
+    *hashValue = read_little_endian<u32>(stream);
+    size       = read_little_endian<u32>(stream);
     if (!stream || version != Version)
         return false;
     desc->resize(size);
@@ -320,26 +315,24 @@ bool Network::read_header(std::istream& stream, std::uint32_t* hashValue, std::s
 
 
 // Write network header
-bool Network::write_header(std::ostream&      stream,
-                           std::uint32_t      hashValue,
-                           const std::string& desc) const {
-    write_little_endian<std::uint32_t>(stream, Version);
-    write_little_endian<std::uint32_t>(stream, hashValue);
-    write_little_endian<std::uint32_t>(stream, std::uint32_t(desc.size()));
+bool Network::write_header(std::ostream& stream, u32 hashValue, const std::string& desc) const {
+    write_little_endian<u32>(stream, Version);
+    write_little_endian<u32>(stream, hashValue);
+    write_little_endian<u32>(stream, u32(desc.size()));
     stream.write(&desc[0], desc.size());
     return !stream.fail();
 }
 
 
 bool Network::read_parameters(std::istream& stream, std::string& netDescription) {
-    std::uint32_t hashValue;
+    u32 hashValue;
     if (!read_header(stream, &hashValue, &netDescription))
         return false;
     if (hashValue != Network::hash)
         return false;
     if (!Detail::read_parameters(stream, featureTransformer))
         return false;
-    for (std::size_t i = 0; i < LayerStacks; ++i)
+    for (usize i = 0; i < LayerStacks; ++i)
     {
         if (!Detail::read_parameters(stream, network[i]))
             return false;
@@ -353,7 +346,7 @@ bool Network::write_parameters(std::ostream& stream, const std::string& netDescr
         return false;
     if (!Detail::write_parameters(stream, featureTransformer))
         return false;
-    for (std::size_t i = 0; i < LayerStacks; ++i)
+    for (usize i = 0; i < LayerStacks; ++i)
     {
         if (!Detail::write_parameters(stream, network[i]))
             return false;
