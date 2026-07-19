@@ -39,7 +39,6 @@
     #include <cassert>
     #include <cstddef>
     #include <cstdint>
-    #include <type_traits>
     #include "misc.h"
 
     #if defined(_MSC_VER)
@@ -58,15 +57,15 @@
 // _WIN32                  Building on Windows (any)
 // _WIN64                  Building on Windows 64 bit
 
-// Enforce minimum GCC version
+    // Enforce minimum GCC version
     #if defined(__GNUC__) && !defined(__clang__) \
       && (__GNUC__ < 9 || (__GNUC__ == 9 && __GNUC_MINOR__ < 3))
         #error "Stockfish requires GCC 9.3 or later for correct compilation"
     #endif
 
     // Enforce minimum Clang version
-    #if defined(__clang__) && (__clang_major__ < 10)
-        #error "Stockfish requires Clang 10.0 or later for correct compilation"
+    #if defined(__clang__) && (__clang_major__ < 11)
+        #error "Stockfish requires Clang 11.0 or later for correct compilation"
     #endif
 
     #define ASSERT_ALIGNED(ptr, alignment) assert(reinterpret_cast<uintptr_t>(ptr) % alignment == 0)
@@ -76,7 +75,7 @@
         #define IS_64BIT
     #endif
 
-    #if defined(USE_POPCNT) && defined(_MSC_VER)
+    #if defined(_MSC_VER)
         #include <nmmintrin.h>  // Microsoft header for _mm_popcnt_u64()
     #endif
 
@@ -189,6 +188,10 @@ constexpr bool is_mated(Value value) {
 }
 
 constexpr bool is_mate_or_mated(Value value) { return is_mate(value) || is_mated(value); }
+
+constexpr Value mate_in(int ply) { return VALUE_MATE - ply; }
+
+constexpr Value mated_in(int ply) { return -VALUE_MATE + ply; }
 
 // In the code, we make the assumption that these values
 // are such that non_pawn_material() can be used to uniquely
@@ -377,10 +380,6 @@ constexpr CastlingRights operator&(Color c, CastlingRights cr) {
     return CastlingRights((c == WHITE ? WHITE_CASTLING : BLACK_CASTLING) & cr);
 }
 
-constexpr Value mate_in(int ply) { return VALUE_MATE - ply; }
-
-constexpr Value mated_in(int ply) { return -VALUE_MATE + ply; }
-
 constexpr Square make_square(File f, Rank r) { return Square((r << 3) + f); }
 
 constexpr Piece make_piece(Color c, PieceType pt) { return Piece((c << 3) + pt); }
@@ -454,10 +453,6 @@ class Move {
         return Square(data & 0x3F);
     }
 
-    // Same as to_sq() but without assertion, for branchless code paths
-    // where the result is masked/ignored when move is not ok
-    constexpr Square to_sq_unchecked() const { return Square(data & 0x3F); }
-
     constexpr MoveType type_of() const { return MoveType(data & (3 << 14)); }
 
     constexpr PieceType promotion_type() const { return PieceType(((data >> 12) & 3) + KNIGHT); }
@@ -484,14 +479,6 @@ class Move {
    protected:
     u16 data;
 };
-
-template<typename T, typename... Ts>
-struct is_all_same {
-    static constexpr bool value = (std::is_same_v<T, Ts> && ...);
-};
-
-template<typename... Ts>
-constexpr auto is_all_same_v = is_all_same<Ts...>::value;
 
 }  // namespace Stockfish
 

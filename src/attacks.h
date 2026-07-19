@@ -31,7 +31,7 @@
     #define USE_HYPERBOLA_QUINT
 #elif defined(__loongarch__) && __loongarch_grlen == 64
     #define USE_HYPERBOLA_QUINT
-#elif defined(USE_AVX2) && !defined(USE_PEXT)
+#elif defined(USE_AVX2)
     #include <immintrin.h>
     #define USE_DUAL_HYPERBOLA_QUINT
 #endif
@@ -43,12 +43,24 @@ void init();
 #ifdef USE_HYPERBOLA_QUINT
 
 inline Bitboard reverse_bb(Bitboard bb) {
-    #ifdef __aarch64__
+    #if __has_builtin(__builtin_bitreverse64)
+    return __builtin_bitreverse64(bb);
+    #else
+        #ifdef __aarch64__
+            #if defined(__GNUC__) && !defined(__clang__) \
+              && (__GNUC__ < 12 || (__GNUC__ == 12 && __GNUC_MINOR__ < 2))
+    // no rbit in arm_acle.h
+    Bitboard out;
+    asm("rbit %0, %1" : "=r"(out) : "r"(bb));
+    return out;
+            #else
     return __rbitll(bb);
-    #else  // loongarch
+            #endif
+        #else  // loongarch
     Bitboard out;
     asm("bitrev.d %0, %1" : "=r"(out) : "r"(bb));
     return out;
+        #endif
     #endif
 }
 
@@ -75,7 +87,7 @@ const Magic& magic(Square s, PieceType pt);
 
 #elif defined(USE_DUAL_HYPERBOLA_QUINT)
 
-struct DualMagic {
+struct alignas(32) DualMagic {
     // file, diagonal, unused, antidiagonal
     Bitboard maskFile, maskDiag, maskNone, maskAntidiag;
     // Precomputed 2 * square_bb(sq), 2 * reverse(square_bb(sq))
@@ -90,10 +102,10 @@ struct DualMagic {
     //
     // When using hyperbola quintessence, file, diagonal and antidiagonal attacks
     // can use a byte reversal rather than a full bit reversal (because all squares
-    // reside in different bytes). Rank atttacks cannot. Thus, for rank attacks
+    // reside in different bytes). Rank attacks cannot. Thus, for rank attacks
     // only, we use a compact lookup table indexed by the 8 bits of the rank's occupancy.
     std::pair<Bitboard, Bitboard> both_attacks_bb(Bitboard occupied) const {
-        // Byteswap within 64-bit elements
+        // Byteswap within 128-bit elements
         const auto bswap = [](__m256i v) {
             return _mm256_shuffle_epi8(v, _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                                                           13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
@@ -128,37 +140,23 @@ const DualMagic& dual_magic(Square s);
 #else
 // Magic holds all magic bitboards relevant data for a single square
 struct Magic {
-    Bitboard mask;
-    #ifdef USE_PEXT
-    u16*     attacks;
-    Bitboard pseudoAttacks;
-    #else
+    Bitboard  mask;
     Bitboard* attacks;
     Bitboard  magic;
     unsigned  shift;
-    #endif
 
     // Compute the attack's index using the 'magic bitboards' approach
     unsigned index(Bitboard occupied) const {
-
-    #ifdef USE_PEXT
-        return unsigned(pext(occupied, mask));
-    #else
         if (Is64Bit)
             return unsigned(((occupied & mask) * magic) >> shift);
 
         unsigned lo = unsigned(occupied) & unsigned(mask);
         unsigned hi = unsigned(occupied >> 32) & unsigned(mask >> 32);
         return (lo * unsigned(magic) ^ hi * unsigned(magic >> 32)) >> shift;
-    #endif
     }
 
     Bitboard attacks_bb([[maybe_unused]] Square s, Bitboard occupied) const {
-    #ifdef USE_PEXT
-        return pdep(attacks[index(occupied)], pseudoAttacks);
-    #else
         return attacks[index(occupied)];
-    #endif
     }
 };
 
@@ -272,7 +270,7 @@ inline Bitboard attacks_bb(Square s, Color c = COLOR_NB) {
 
 // Returns the attacks by the given piece
 // assuming the board is occupied according to the passed Bitboard.
-// Sliding piece attacks do not continue passed an occupied square.
+// Sliding piece attacks do not continue past an occupied square.
 template<PieceType Pt>
 inline Bitboard attacks_bb(Square s, Bitboard occupied) {
 
@@ -308,7 +306,7 @@ inline Bitboard attacks_bb(Square s, Bitboard occupied) {
 
 // Returns the attacks by the given piece
 // assuming the board is occupied according to the passed Bitboard.
-// Sliding piece attacks do not continue passed an occupied square.
+// Sliding piece attacks do not continue past an occupied square.
 inline Bitboard attacks_bb(PieceType pt, Square s, Bitboard occupied) {
 
     assert(pt != PAWN && is_ok(s));
@@ -320,7 +318,7 @@ inline Bitboard attacks_bb(PieceType pt, Square s, Bitboard occupied) {
     case ROOK :
         return attacks_bb<ROOK>(s, occupied);
     case QUEEN :
-        return attacks_bb<BISHOP>(s, occupied) | attacks_bb<ROOK>(s, occupied);
+        return attacks_bb<QUEEN>(s, occupied);
     default :
         return PseudoAttacks[pt][s];
     }

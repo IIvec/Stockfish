@@ -40,12 +40,20 @@
 
 #elif defined(USE_LSX)
     #include <lsxintrin.h>
+
+#elif defined(USE_RVV)
+    #include <riscv_vector.h>
+
 #endif
 
 #include "../types.h"
 #include "nnue_common.h"
 
 namespace Stockfish::Eval::NNUE::SIMD {
+
+#if defined(USE_AVX2) && !defined(USE_VNNI) && !defined(USE_AVX512)
+    #define USE_AVX2_PAIR_ACTIVATIONS
+#endif
 
 // If vector instructions are enabled, we update and refresh the
 // accumulator tile by tile such that each tile fits in the CPU's
@@ -55,9 +63,7 @@ namespace Stockfish::Eval::NNUE::SIMD {
 #ifdef USE_AVX512
 using vec_t      = __m512i;
 using vec_i8_t   = __m256i;
-using vec128_t   = __m128i;
 using psqt_vec_t = __m256i;
-using vec_uint_t = __m512i;
     #define vec_load(a) _mm512_load_si512(a)
     #define vec_store(a, b) _mm512_store_si512(a, b)
     #define vec_convert_8_16(a) _mm512_cvtepi8_epi16(a)
@@ -77,24 +83,15 @@ using vec_uint_t = __m512i;
     #define vec_sub_psqt_32(a, b) _mm256_sub_epi32(a, b)
     #define vec_zero_psqt() _mm256_setzero_si256()
 
-    #ifdef USE_SSSE3
-        #define vec_nnz(a) _mm512_cmpgt_epi32_mask(a, _mm512_setzero_si512())
-    #endif
+    #define vec_nnz(a) _mm512_cmpgt_epi32_mask(a, _mm512_setzero_si512())
 
-    #define vec128_zero _mm_setzero_si128()
-    #define vec128_set_16(a) _mm_set1_epi16(a)
-    #define vec128_load(a) _mm_load_si128(a)
-    #define vec128_storeu(a, b) _mm_storeu_si128(a, b)
-    #define vec128_add(a, b) _mm_add_epi16(a, b)
     #define NumRegistersSIMD 16
     #define MaxChunkSize 64
 
 #elif USE_AVX2
 using vec_t      = __m256i;
 using vec_i8_t   = __m128i;
-using vec128_t   = __m128i;
 using psqt_vec_t = __m256i;
-using vec_uint_t = __m256i;
     #define vec_load(a) _mm256_load_si256(a)
     #define vec_store(a, b) _mm256_store_si256(a, b)
     #define vec_convert_8_16(a) _mm256_cvtepi8_epi16(a)
@@ -114,31 +111,16 @@ using vec_uint_t = __m256i;
     #define vec_sub_psqt_32(a, b) _mm256_sub_epi32(a, b)
     #define vec_zero_psqt() _mm256_setzero_si256()
 
-    #ifdef USE_SSSE3
-        #if defined(USE_VNNI) && !defined(USE_AVXVNNI)
-            #define vec_nnz(a) _mm256_cmpgt_epi32_mask(a, _mm256_setzero_si256())
-        #else
-            #define vec_nnz(a) \
-                _mm256_movemask_ps( \
-                  _mm256_castsi256_ps(_mm256_cmpgt_epi32(a, _mm256_setzero_si256())))
-        #endif
-    #endif
-
-    #define vec128_zero _mm_setzero_si128()
-    #define vec128_set_16(a) _mm_set1_epi16(a)
-    #define vec128_load(a) _mm_load_si128(a)
-    #define vec128_storeu(a, b) _mm_storeu_si128(a, b)
-    #define vec128_add(a, b) _mm_add_epi16(a, b)
+    #define vec_nnz(a) \
+        _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpgt_epi32(a, _mm256_setzero_si256())))
 
     #define NumRegistersSIMD 12
     #define MaxChunkSize 32
 
 #elif USE_SSE2
 using vec_t      = __m128i;
-using vec_i8_t   = u64;  // for the correct size -- will be loaded into an xmm reg
-using vec128_t   = __m128i;
+using vec_i8_t   = u64;
 using psqt_vec_t = __m128i;
-using vec_uint_t = __m128i;
     #define vec_load(a) (*(a))
     #define vec_store(a, b) *(a) = (b)
     #define vec_add_16(a, b) _mm_add_epi16(a, b)
@@ -182,12 +164,6 @@ inline __m128i vec_convert_8_16(u64 x) {
 }
     #endif
 
-    #define vec128_zero _mm_setzero_si128()
-    #define vec128_set_16(a) _mm_set1_epi16(a)
-    #define vec128_load(a) _mm_load_si128(a)
-    #define vec128_storeu(a, b) _mm_storeu_si128(a, b)
-    #define vec128_add(a, b) _mm_add_epi16(a, b)
-
     #define NumRegistersSIMD (Is64Bit ? 12 : 6)
     #define MaxChunkSize 16
 
@@ -201,8 +177,6 @@ using vec_i32x4_t __attribute__((may_alias)) = int32x4_t;
 using vec_t __attribute__((may_alias))      = int16x8_t;
 using vec_i8_t __attribute__((may_alias))   = int8x16_t;
 using psqt_vec_t __attribute__((may_alias)) = int32x4_t;
-using vec128_t __attribute__((may_alias))   = uint16x8_t;
-using vec_uint_t __attribute__((may_alias)) = uint32x4_t;
     #define vec_load(a) (*(a))
     #define vec_store(a, b) *(a) = (b)
     #define vec_add_16(a, b) vaddq_s16(a, b)
@@ -220,15 +194,6 @@ using vec_uint_t __attribute__((may_alias)) = uint32x4_t;
     #define vec_sub_psqt_32(a, b) vsubq_s32(a, b)
     #define vec_zero_psqt() psqt_vec_t{0}
 
-static constexpr u32 Mask[4] = {1, 2, 4, 8};
-    #define vec_nnz(a) \
-        vaddvq_u32(vandq_u32(vtstq_u32((uint32x4_t) a, (uint32x4_t) a), vld1q_u32(Mask)))
-    #define vec128_zero vdupq_n_u16(0)
-    #define vec128_set_16(a) vdupq_n_u16(a)
-    #define vec128_load(a) vld1q_u16(reinterpret_cast<const u16*>(a))
-    #define vec128_storeu(a, b) vst1q_u16(reinterpret_cast<u16*>(a), b)
-    #define vec128_add(a, b) vaddq_u16(a, b)
-
     #define NumRegistersSIMD 16
     #define MaxChunkSize 16
 
@@ -241,9 +206,7 @@ inline int16x8_t vsubw_high_s8(int16x8_t a, int8x16_t b) { return vsubw_s8(a, vg
 #elif USE_LASX
 using vec_t      = __m256i;
 using vec_i8_t   = __m128i;
-using vec128_t   = __m128i;
 using psqt_vec_t = __m256i;
-using vec_uint_t = __m256i;
 
 inline __m256i lasx_load256(const __m256i* a) {
     return __lasx_xvld(reinterpret_cast<const void*>(a), 0);
@@ -289,12 +252,6 @@ inline __m256i lasx_packus_32(__m256i a, __m256i b) {
     #define vec_mulhi_8 __lasx_xvmuh_bu
     #define vec_srli_8 __lasx_xvsrli_b
 
-    #define vec128_zero __lsx_vldi(0)
-    #define vec128_set_16(a) __lsx_vreplgr2vr_h(a)
-    #define vec128_load(a) (*(a))
-    #define vec128_storeu(a, b) *(a) = (b)
-    #define vec128_add(a, b) __lsx_vadd_h(a, b)
-
     #define NumRegistersSIMD 24
     #define MaxChunkSize 32
 
@@ -324,9 +281,7 @@ inline int lasx_vec_nnz(__m256i a) {
 #elif USE_LSX
 using vec_t      = __m128i;
 using vec_i8_t   = u64;
-using vec128_t   = __m128i;
 using psqt_vec_t = __m128i;
-using vec_uint_t = __m128i;
 
 inline __m128i lsx_packus_16(__m128i a, __m128i b) {
     #if defined(__clang__) && defined(__has_builtin) && __has_builtin(__builtin_lsx_vssrani_bu_h)
@@ -377,12 +332,6 @@ inline __m128i vec_convert_8_16(u64 x) {
     #define vec_mulhi_8 __lsx_vmuh_bu
     #define vec_srli_8 __lsx_vsrli_b
 
-    #define vec128_zero __lsx_vldi(0)
-    #define vec128_set_16(a) __lsx_vreplgr2vr_h(a)
-    #define vec128_load(a) (*(a))
-    #define vec128_storeu(a, b) *(a) = (b)
-    #define vec128_add(a, b) __lsx_vadd_h(a, b)
-
     #define NumRegistersSIMD 24
     #define MaxChunkSize 16
 
@@ -390,64 +339,6 @@ inline __m128i vec_convert_8_16(u64 x) {
     #undef VECTOR
 
 #endif
-
-struct Vec16Wrapper {
-#ifdef VECTOR
-    using type = vec_t;
-    static type add(const type& lhs, const type& rhs) { return vec_add_16(lhs, rhs); }
-    static type sub(const type& lhs, const type& rhs) { return vec_sub_16(lhs, rhs); }
-#else
-    using type = BiasType;
-    static type add(const type& lhs, const type& rhs) { return lhs + rhs; }
-    static type sub(const type& lhs, const type& rhs) { return lhs - rhs; }
-#endif
-};
-
-struct Vec32Wrapper {
-#ifdef VECTOR
-    using type = psqt_vec_t;
-    static type add(const type& lhs, const type& rhs) { return vec_add_psqt_32(lhs, rhs); }
-    static type sub(const type& lhs, const type& rhs) { return vec_sub_psqt_32(lhs, rhs); }
-#else
-    using type = PSQTWeightType;
-    static type add(const type& lhs, const type& rhs) { return lhs + rhs; }
-    static type sub(const type& lhs, const type& rhs) { return lhs - rhs; }
-#endif
-};
-
-enum UpdateOperation {
-    Add,
-    Sub
-};
-
-template<typename VecWrapper,
-         UpdateOperation... ops,
-         std::enable_if_t<sizeof...(ops) == 0, bool> = true>
-typename VecWrapper::type fused(const typename VecWrapper::type& in) {
-    return in;
-}
-
-template<typename VecWrapper,
-         UpdateOperation update_op,
-         UpdateOperation... ops,
-         typename T,
-         typename... Ts,
-         std::enable_if_t<is_all_same_v<typename VecWrapper::type, T, Ts...>, bool> = true,
-         std::enable_if_t<sizeof...(ops) == sizeof...(Ts), bool>                    = true>
-typename VecWrapper::type
-fused(const typename VecWrapper::type& in, const T& operand, const Ts&... operands) {
-    switch (update_op)
-    {
-    case Add :
-        return fused<VecWrapper, ops...>(VecWrapper::add(in, operand), operands...);
-    case Sub :
-        return fused<VecWrapper, ops...>(VecWrapper::sub(in, operand), operands...);
-    default :
-        static_assert(update_op == Add || update_op == Sub,
-                      "Only Add and Sub are currently supported.");
-        return typename VecWrapper::type();
-    }
-}
 
 #if defined(USE_AVX512)
 
@@ -635,6 +526,35 @@ class SIMDTiling {
     static_assert(PSQTBuckets % PsqtTileHeight == 0, "PsqtTileHeight must divide PSQTBuckets");
 #endif
 };
+
+#if defined(USE_RVV)
+
+    #define RVV_DEFINE_DPBUSD(A, W, H) \
+        inline vint32##A##_t rvv_dpbusd_##A(vuint8##A##_t a, vint8##A##_t b, usize n) { \
+            vint16##W##_t  prod   = __riscv_vwmulsu_vv_i16##W(b, a, 4 * n); \
+            vuint32##W##_t prod32 = __riscv_vreinterpret_v_u16##W##_u32##W( \
+              __riscv_vreinterpret_v_i16##W##_u16##W(prod)); \
+            vint16##A##_t even = \
+              __riscv_vreinterpret_v_u16##A##_i16##A(__riscv_vnsrl_wx_u16##A(prod32, 0, 2 * n)); \
+            vint16##A##_t odd = \
+              __riscv_vreinterpret_v_u16##A##_i16##A(__riscv_vnsrl_wx_u16##A(prod32, 16, 2 * n)); \
+            vuint32##A##_t pairs = __riscv_vreinterpret_v_u16##A##_u32##A( \
+              __riscv_vreinterpret_v_i16##A##_u16##A(__riscv_vadd_vv_i16##A(even, odd, 2 * n))); \
+            vint16##H##_t lo = \
+              __riscv_vreinterpret_v_u16##H##_i16##H(__riscv_vnsrl_wx_u16##H(pairs, 0, n)); \
+            vint16##H##_t hi = \
+              __riscv_vreinterpret_v_u16##H##_i16##H(__riscv_vnsrl_wx_u16##H(pairs, 16, n)); \
+            return __riscv_vwadd_vv_i32##A(lo, hi, n); \
+        }
+
+RVV_DEFINE_DPBUSD(m1, m2, mf2)
+RVV_DEFINE_DPBUSD(m2, m4, m1)
+RVV_DEFINE_DPBUSD(m4, m8, m2)
+
+    #undef RVV_DEFINE_DPBUSD
+
+#endif
+
 }
 
 #endif

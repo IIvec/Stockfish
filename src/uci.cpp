@@ -26,7 +26,9 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <filesystem>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "benchmark.h"
@@ -63,9 +65,9 @@ void UCIEngine::print_info_string(std::string_view str) {
     sync_cout_end();
 }
 
-UCIEngine::UCIEngine(int argc, char** argv) :
-    engine(argv[0]),
-    cli(argc, argv) {
+UCIEngine::UCIEngine(CommandLine cli_) :
+    engine(cli_.argc > 0 ? std::optional{path_from_utf8(cli_.argv[0])} : std::nullopt),
+    cli(std::move(cli_)) {
 
     engine.get_options().add_info_listener([](const std::optional<std::string>& str) {
         if (str.has_value())
@@ -85,6 +87,7 @@ void UCIEngine::init_search_update_listeners() {
 }
 
 void UCIEngine::loop() {
+    set_console_utf8();
     std::string token, cmd;
 
     for (int i = 1; i < cli.argc; ++i)
@@ -96,6 +99,7 @@ void UCIEngine::loop() {
             && !getline(std::cin, cmd))  // Wait for an input or an end-of-file (EOF) indication
             cmd = "quit";
 
+        currentCmd = cmd;
         std::istringstream is(cmd);
 
         token.clear();  // Avoid a stale if getline() returns nothing or a blank line
@@ -136,9 +140,13 @@ void UCIEngine::loop() {
             sync_cout << "readyok" << sync_endl;
 
         // Add custom non-UCI commands, mainly for debugging purposes.
-        // These commands must not be used during a search!
         else if (token == "flip")
-            engine.flip();
+        {
+            if (auto err = engine.flip())
+            {
+                terminate_on_critical_error(err->what());
+            }
+        }
         else if (token == "bench")
             bench(is);
         else if (token == BenchmarkCommand)
@@ -151,10 +159,11 @@ void UCIEngine::loop() {
             sync_cout << compiler_info() << sync_endl;
         else if (token == "export_net")
         {
-            std::pair<std::optional<std::string>, std::string> file;
+            std::optional<std::filesystem::path> file;
+            std::string                          filename;
 
-            if (is >> file.second)
-                file.first = file.second;
+            if (is >> filename)
+                file = path_from_utf8(filename);
 
             engine.save_network(file);
         }
@@ -171,7 +180,7 @@ void UCIEngine::loop() {
             sync_cout << "Unknown command: '" << cmd << "'. Type help for more information."
                       << sync_endl;
 
-    } while (token != "quit" && cli.argc == 1);  // The command-line arguments are one-shot
+    } while (token != "quit" && cli.argc <= 1);  // The command-line arguments are one-shot
 }
 
 Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
@@ -181,9 +190,13 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
     limits.startTime = now();  // The search starts as early as possible
 
     while (is >> token)
+    {
         if (token == "searchmoves")  // Needs to be the last command on the line
+        {
             while (is >> token)
                 limits.searchmoves.push_back(to_lower(token));
+            break;
+        }
 
         else if (token == "wtime")
             is >> limits.time[WHITE];
@@ -209,6 +222,10 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
             limits.infinite = 1;
         else if (token == "ponder")
             limits.ponderMode = true;
+
+        if (is.fail())
+            terminate_on_critical_error("Invalid argument for '" + token + "'");
+    }
 
     return limits;
 }
@@ -456,7 +473,11 @@ void UCIEngine::setoption(std::istringstream& is) {
 }
 
 u64 UCIEngine::perft(const Search::LimitsType& limits) {
-    auto nodes = engine.perft(engine.fen(), limits.perft, engine.get_options()["UCI_Chess960"]);
+    auto result = engine.perft(engine.fen(), limits.perft, engine.get_options()["UCI_Chess960"]);
+    if (auto err = std::get_if<PositionSetError>(&result))
+        terminate_on_critical_error(err->what());
+
+    auto nodes = std::get<u64>(result);
     sync_cout << "\nNodes searched: " << nodes << "\n" << sync_endl;
     return nodes;
 }
@@ -489,7 +510,7 @@ void UCIEngine::position(std::istringstream& is) {
     auto err = engine.set_position(fen, moves);
     if (err.has_value())
     {
-        terminate_on_critical_error(fullCommand, err->what());
+        terminate_on_critical_error(err->what());
     }
 }
 
@@ -597,7 +618,8 @@ std::string UCIEngine::move(Move m, bool chess960) {
 
 
 std::string UCIEngine::to_lower(std::string str) {
-    std::transform(str.begin(), str.end(), str.begin(), [](auto c) { return std::tolower(c); });
+    std::transform(str.begin(), str.end(), str.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
 
     return str;
 }
@@ -659,9 +681,8 @@ void UCIEngine::on_bestmove(std::string_view bestmove, std::string_view ponder) 
     std::cout << sync_endl;
 }
 
-void UCIEngine::terminate_on_critical_error(const std::string& fullCommand,
-                                            const std::string& message) {
-    sync_cout << "info string CRITICAL ERROR: Command `" << fullCommand
+void UCIEngine::terminate_on_critical_error(const std::string& message) {
+    sync_cout << "info string CRITICAL ERROR: Command `" << currentCmd
               << "` failed. Reason: " << message << '\n'
               << sync_endl;
     std::exit(1);

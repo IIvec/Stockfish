@@ -18,9 +18,9 @@
 
 #include <iostream>
 #include <memory>
+#include <utility>
 
 #include "attacks.h"
-#include "bitboard.h"
 #include "misc.h"
 #include "position.h"
 #include "tune.h"
@@ -39,11 +39,11 @@ __attribute__((used)) // keep main alive
 int main(int argc, char* argv[]) {
     std::cout << engine_info() << std::endl;
 
-    Bitboards::init();
     Attacks::init();
     Position::init();
 
-    auto uci = std::make_unique<UCIEngine>(argc, argv);
+    auto cli = CommandLine(argc, argv);
+    auto uci = std::make_unique<UCIEngine>(std::move(cli));
 
     Tune::init(uci->engine_options());
 
