@@ -59,8 +59,7 @@ class AffineTransformSparseInput {
     static constexpr IndexType PaddedOutputDimensions =
       ceil_to_multiple<IndexType>(OutputDimensions, MaxSimdWidth);
 
-#if (defined(USE_SSSE3) || defined(USE_LSX) || defined(USE_LASX) || (USE_NEON >= 8) \
-     || defined(USE_RVV))
+#if (defined(USE_SSSE3) || defined(USE_LSX) || defined(USE_LASX) || (USE_NEON >= 8))
     static constexpr IndexType ChunkSize = 4;
 #else
     static constexpr IndexType ChunkSize = 1;
@@ -164,6 +163,13 @@ class AffineTransformSparseInput {
         #define vec_set_32 __lsx_vreplgr2vr_w
         #define vec_add_dpbusd_32 SIMD::lsx_m128_add_dpbusd_epi32
     #endif
+    #if defined(USE_LASX)
+        #define vec_load_32(a) __lasx_xvldrepl_w(reinterpret_cast<const void*>(a), 0)
+    #elif defined(USE_LSX)
+        #define vec_load_32(a) __lsx_vldrepl_w(reinterpret_cast<const void*>(a), 0)
+    #else
+        #define vec_load_32(a) vec_set_32(load_as<i32>(a))
+    #endif
         constexpr IndexType OutputSimdWidth = sizeof(outvec_t) / sizeof(OutputType);
         constexpr IndexType NumAccums       = OutputDimensions / OutputSimdWidth;
         // If we're using high-latency dot product instructions, split the accumulators
@@ -205,9 +211,9 @@ class AffineTransformSparseInput {
             const isize   i0  = *start++;
             const isize   i1  = *start++;
             const isize   i2  = *start++;
-            const invec_t in0 = vec_set_32(load_as<i32>(input + i0 * sizeof(i32)));
-            const invec_t in1 = vec_set_32(load_as<i32>(input + i1 * sizeof(i32)));
-            const invec_t in2 = vec_set_32(load_as<i32>(input + i2 * sizeof(i32)));
+            const invec_t in0 = vec_load_32(input + i0 * sizeof(i32));
+            const invec_t in1 = vec_load_32(input + i1 * sizeof(i32));
+            const invec_t in2 = vec_load_32(input + i2 * sizeof(i32));
             const auto    col0 =
               reinterpret_cast<const invec_t*>(&weights_cp[i0 * OutputDimensions * ChunkSize]);
             const auto col1 =
@@ -229,7 +235,7 @@ class AffineTransformSparseInput {
         while (start < end)
         {
             const isize   i  = *start++;
-            const invec_t in = vec_set_32(load_as<i32>(input + i * sizeof(i32)));
+            const invec_t in = vec_load_32(input + i * sizeof(i32));
             const auto    col =
               reinterpret_cast<const invec_t*>(&weights_cp[i * OutputDimensions * ChunkSize]);
             for (IndexType k = 0; k < NumAccums; ++k)
@@ -264,7 +270,7 @@ class AffineTransformSparseInput {
             while (bits)
             {
                 const isize   i0   = pop_lsb(bits);
-                const invec_t in0  = vec_set_32(load_as<i32>(base_addr + i0 * sizeof(i32)));
+                const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
                 const auto    col0 = reinterpret_cast<const invec_t*>(
                   &weights_base[i0 * OutputDimensions * ChunkSize]);
 
@@ -276,7 +282,7 @@ class AffineTransformSparseInput {
                 }
 
                 const isize   i1   = pop_lsb(bits);
-                const invec_t in1  = vec_set_32(load_as<i32>(base_addr + i1 * sizeof(i32)));
+                const invec_t in1  = vec_load_32(base_addr + i1 * sizeof(i32));
                 const auto    col1 = reinterpret_cast<const invec_t*>(
                   &weights_base[i1 * OutputDimensions * ChunkSize]);
 
@@ -292,7 +298,7 @@ class AffineTransformSparseInput {
                 const isize i0 = pop_lsb(bits);
                 if (!bits)
                 {
-                    const invec_t in0  = vec_set_32(load_as<i32>(base_addr + i0 * sizeof(i32)));
+                    const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
                     const auto    col0 = reinterpret_cast<const invec_t*>(
                       &weights_base[i0 * OutputDimensions * ChunkSize]);
                     for (IndexType l = 0; l < NumAccums; ++l)
@@ -303,8 +309,8 @@ class AffineTransformSparseInput {
                 const isize i1 = pop_lsb(bits);
                 if (!bits)
                 {
-                    const invec_t in0  = vec_set_32(load_as<i32>(base_addr + i0 * sizeof(i32)));
-                    const invec_t in1  = vec_set_32(load_as<i32>(base_addr + i1 * sizeof(i32)));
+                    const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
+                    const invec_t in1  = vec_load_32(base_addr + i1 * sizeof(i32));
                     const auto    col0 = reinterpret_cast<const invec_t*>(
                       &weights_base[i0 * OutputDimensions * ChunkSize]);
                     const auto col1 = reinterpret_cast<const invec_t*>(
@@ -318,9 +324,9 @@ class AffineTransformSparseInput {
                 }
 
                 const isize   i2   = pop_lsb(bits);
-                const invec_t in0  = vec_set_32(load_as<i32>(base_addr + i0 * sizeof(i32)));
-                const invec_t in1  = vec_set_32(load_as<i32>(base_addr + i1 * sizeof(i32)));
-                const invec_t in2  = vec_set_32(load_as<i32>(base_addr + i2 * sizeof(i32)));
+                const invec_t in0  = vec_load_32(base_addr + i0 * sizeof(i32));
+                const invec_t in1  = vec_load_32(base_addr + i1 * sizeof(i32));
+                const invec_t in2  = vec_load_32(base_addr + i2 * sizeof(i32));
                 const auto    col0 = reinterpret_cast<const invec_t*>(
                   &weights_base[i0 * OutputDimensions * ChunkSize]);
                 const auto col1 = reinterpret_cast<const invec_t*>(
@@ -347,7 +353,7 @@ class AffineTransformSparseInput {
                 #undef FIX_GCC15_MISOPTIMIZATION
             #endif
 
-                const invec_t in = vec_set_32(load_as<i32>(input_addr));
+                const invec_t in = vec_load_32(input_addr);
                 for (IndexType l = 0; l < NumAccums; ++l)
                     vec_add_dpbusd_32(acc[l], in, col[l]);
             }
@@ -367,53 +373,56 @@ class AffineTransformSparseInput {
             outptr[k] = acc[k];
 
     #undef vec_set_32
+    #undef vec_load_32
     #undef vec_add_dpbusd_32
     #ifdef vec_add_32
         #undef vec_add_32
     #endif
 #elif defined(USE_RVV)
-        static_assert(InputDimensions % 256 == 0);
+        // we don't support larger for now
+        static_assert(OutputDimensions <= 128 * 8 / 32);
 
-        const i8* weights_cp = weights;
-
-    #define RVV_SPARSE_PROPAGATE(LMUL) \
+    #define RVV_SPARSE_PROPAGATE(m1, m2, m4) \
         do \
         { \
-            const usize blk = __riscv_vsetvlmax_e32m##LMUL(); \
-            for (IndexType ob = 0; ob < OutputDimensions; ob += blk) \
+            usize          vl  = OutputDimensions; \
+            vint32##m4##_t acc = __riscv_vle32_v_i32##m4(biases, vl); \
+            IndexType      i   = 0; \
+            for (; i + 2 <= nnzInfo.count; i += 2) \
             { \
-                const usize       vl  = __riscv_vsetvl_e32m##LMUL(OutputDimensions - ob); \
-                vint32m##LMUL##_t acc = __riscv_vle32_v_i32m##LMUL(biases + ob, vl); \
-                for (IndexType k = 0; k < InputDimensions / 256; ++k) \
-                { \
-                    u64   bits         = load_as<u64>(nnzInfo.bitset + k * 8); \
-                    isize base         = k * 64; \
-                    auto* base_addr    = input + base * sizeof(i32); \
-                    auto* weights_base = &weights_cp[base * OutputDimensions * ChunkSize]; \
-                    while (bits) \
-                    { \
-                        isize             i = pop_lsb(bits); \
-                        vuint8m##LMUL##_t a = __riscv_vreinterpret_v_u32m##LMUL##_u8m##LMUL( \
-                          __riscv_vmv_v_x_u32m##LMUL(load_as<u32>(base_addr + i * sizeof(i32)), \
-                                                     vl)); \
-                        vint8m##LMUL##_t b = __riscv_vle8_v_i8m##LMUL( \
-                          &weights_base[i * OutputDimensions * ChunkSize + ob * ChunkSize], \
-                          vl * ChunkSize); \
-                        acc = \
-                          __riscv_vadd_vv_i32m##LMUL(acc, SIMD::rvv_dpbusd_m##LMUL(a, b, vl), vl); \
-                    } \
-                } \
-                __riscv_vse32_v_i32m##LMUL(output + ob, acc, vl); \
+                usize         idx0 = nnzInfo.nnz[i + 0]; \
+                usize         idx1 = nnzInfo.nnz[i + 1]; \
+                uint8_t       in0  = input[idx0]; \
+                uint8_t       in1  = input[idx1]; \
+                vint8##m1##_t w0   = __riscv_vle8_v_i8##m1(&weights[idx0 * OutputDimensions], vl); \
+                vint8##m1##_t w1   = __riscv_vle8_v_i8##m1(&weights[idx1 * OutputDimensions], vl); \
+                /* input is in [0:127], weights is in [-128:127], \
+                 * so it's safe to accumulate into 16-bit twice */ \
+                vint16##m2##_t prod = __riscv_vwmulsu(w0, in0, vl); \
+                prod                = __riscv_vwmaccus(prod, in1, w1, vl); \
+                acc                 = __riscv_vwadd_wv(acc, prod, vl); \
             } \
+            if (i < nnzInfo.count) \
+            { \
+                usize          idx  = nnzInfo.nnz[i]; \
+                uint8_t        in   = input[idx]; \
+                vint8##m1##_t  w    = __riscv_vle8_v_i8##m1(&weights[idx * OutputDimensions], vl); \
+                vint16##m2##_t prod = __riscv_vwmulsu(w, in, vl); \
+                acc                 = __riscv_vwadd_wv(acc, prod, vl); \
+            } \
+            __riscv_vse32(output, acc, vl); \
         } while (0)
 
         // Select LMUL
-        if (__riscv_vsetvlmax_e32m1() >= OutputDimensions)
-            RVV_SPARSE_PROPAGATE(1);
-        else if (__riscv_vsetvlmax_e32m2() >= OutputDimensions)
-            RVV_SPARSE_PROPAGATE(2);
+        const usize VL1 = __riscv_vsetvlmax_e32m1();
+        if (VL1 >= OutputDimensions)
+            RVV_SPARSE_PROPAGATE(mf4, mf2, m1);
+        else if (VL1 * 2 >= OutputDimensions)
+            RVV_SPARSE_PROPAGATE(mf2, m1, m2);
+        else if (VL1 * 4 >= OutputDimensions)
+            RVV_SPARSE_PROPAGATE(m1, m2, m4);
         else
-            RVV_SPARSE_PROPAGATE(4);
+            RVV_SPARSE_PROPAGATE(m2, m4, m8);
 
     #undef RVV_SPARSE_PROPAGATE
 #else

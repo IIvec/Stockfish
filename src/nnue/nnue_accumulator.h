@@ -24,7 +24,6 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
-#include <utility>
 
 #include "../types.h"
 #include "../misc.h"
@@ -90,10 +89,7 @@ struct AccumulatorCaches {
 };
 
 
-struct AccumulatorState: public Accumulator {
-    DirtyPiece   dirtyPiece;
-    DirtyThreats dirtyThreats;
-};
+struct AccumulatorState: public Accumulator, Dirties {};
 
 class AccumulatorStack {
    public:
@@ -101,9 +97,9 @@ class AccumulatorStack {
 
     [[nodiscard]] const AccumulatorState& latest() const noexcept;
 
-    void                                  reset() noexcept;
-    std::pair<DirtyPiece&, DirtyThreats&> push() noexcept;
-    void                                  pop() noexcept;
+    void     reset() noexcept;
+    Dirties& push() noexcept;
+    void     pop() noexcept;
 
     void evaluate(const Position&           pos,
                   const FeatureTransformer& featureTransformer,
@@ -117,7 +113,8 @@ class AccumulatorStack {
                        const Position&           pos,
                        const FeatureTransformer& featureTransformer,
                        // Silence spurious warning on GCC 10
-                       [[maybe_unused]] AccumulatorCaches& cache) noexcept;
+                       [[maybe_unused]] AccumulatorCaches& cache,
+                       usize                               last_usable_accum) noexcept;
 
     [[nodiscard]] usize find_last_usable_accumulator(Color perspective) const noexcept;
 
@@ -130,6 +127,11 @@ class AccumulatorStack {
                                      const Position&           pos,
                                      const FeatureTransformer& featureTransformer,
                                      const usize               end) noexcept;
+
+    void forward_update_incremental_both(const Position&           pos,
+                                         const FeatureTransformer& featureTransformer,
+                                         usize                     white_begin,
+                                         usize                     black_begin) noexcept;
 
     std::array<AccumulatorState, MaxSize> accumulators;
     usize                                 size = 1;

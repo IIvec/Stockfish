@@ -21,7 +21,6 @@
 #include "full_threats.h"
 
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <initializer_list>
 #include <utility>
@@ -73,7 +72,7 @@ constexpr auto make_piece_indices_piece() {
 
     for (Square from = SQ_A1; from <= SQ_H8; ++from)
     {
-        Bitboard attacks = Attacks::PawnPushOrAttacks[C][from];
+        Bitboard attacks = Attacks::PseudoAttacks[C][from];
 
         for (Square to = SQ_A1; to <= SQ_H8; ++to)
         {
@@ -136,8 +135,8 @@ constexpr auto init_threat_offsets() {
 
             else if (from >= SQ_A2 && from <= SQ_H7)
             {
-                Bitboard attacks = (pieceIdx < 8) ? Attacks::PawnPushOrAttacks[WHITE][from]
-                                                  : Attacks::PawnPushOrAttacks[BLACK][from];
+                Bitboard attacks = (pieceIdx < 8) ? Attacks::PseudoAttacks[WHITE][from]
+                                                  : Attacks::PseudoAttacks[BLACK][from];
                 cumulativePieceOffset += constexpr_popcount(attacks);
             }
         }
@@ -208,11 +207,9 @@ inline sf_always_inline IndexType FullThreats::make_index(
 // Get a list of indices for active features in ascending order
 
 void FullThreats::append_active_indices(Color perspective, const Position& pos, IndexList& active) {
-    const Square   ksq      = pos.square<KING>(perspective);
-    const Bitboard occupied = pos.pieces();
-    const Bitboard pawns    = pos.pieces(PAWN);
-
-    const Bitboard pawnTargets        = pos.pieces(PAWN, KNIGHT, ROOK);
+    const Square   ksq                = pos.square<KING>(perspective);
+    const Bitboard occupied           = pos.pieces();
+    const Bitboard pawnTargets        = pos.pieces(KNIGHT, ROOK);
     const Bitboard minorSliderTargets = pos.pieces(PAWN, KNIGHT, BISHOP, ROOK);
     const Bitboard queenTargets       = pos.pieces(PAWN, KNIGHT, BISHOP, ROOK, QUEEN);
 
@@ -221,18 +218,14 @@ void FullThreats::append_active_indices(Color perspective, const Position& pos, 
         const Color c = Color(perspective ^ color);
 
         {
-            const Piece    attacker = make_piece(c, PAWN);
-            const Bitboard cPawns   = pos.pieces(c, PAWN);
-            // Set of pawns which are prevented from movement by a pawn in front of them
-            const Bitboard pushers = pawn_single_push_bb(~c, pawns) & cPawns;
-
-            auto process_pawn_attacks = [&](Bitboard attacks, Direction attkDir) {
+            const Piece    attacker             = make_piece(c, PAWN);
+            const Bitboard cPawns               = pos.pieces(c, PAWN);
+            auto           process_pawn_attacks = [&](Bitboard attacks, Direction attkDir) {
                 while (attacks)
                 {
-                    Square to       = pop_lsb(attacks);
-                    Square from     = to - attkDir;
-                    Piece  attacked = pos.piece_on(to);
-                    assert(file_of(from) != file_of(to) || type_of(attacked) == PAWN);
+                    Square    to       = pop_lsb(attacks);
+                    Square    from     = to - attkDir;
+                    Piece     attacked = pos.piece_on(to);
                     IndexType index = make_index(perspective, attacker, from, to, attacked, ksq);
                     active.push_back_if_lt(index, Dimensions);
                 }
@@ -242,13 +235,11 @@ void FullThreats::append_active_indices(Color perspective, const Position& pos, 
             {
                 process_pawn_attacks(shift<NORTH_EAST>(cPawns) & pawnTargets, NORTH_EAST);
                 process_pawn_attacks(shift<NORTH_WEST>(cPawns) & pawnTargets, NORTH_WEST);
-                process_pawn_attacks(shift<NORTH>(pushers), NORTH);
             }
             else
             {
                 process_pawn_attacks(shift<SOUTH_WEST>(cPawns) & pawnTargets, SOUTH_WEST);
                 process_pawn_attacks(shift<SOUTH_EAST>(cPawns) & pawnTargets, SOUTH_EAST);
-                process_pawn_attacks(shift<SOUTH>(pushers), SOUTH);
             }
         }
 
@@ -296,8 +287,45 @@ void FullThreats::append_changed_indices(Color                   perspective,
 
         if (prefetchBase)
             prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
-              reinterpret_cast<uintptr_t>(prefetchBase) + index * prefetchStride));
+              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(index) * prefetchStride));
         insert.push_back_if_lt(index, Dimensions);
+    }
+}
+
+void FullThreats::append_changed_indices_both(Square                  white_ksq,
+                                              Square                  black_ksq,
+                                              const DiffType&         diff,
+                                              IndexList&              white_removed,
+                                              IndexList&              white_added,
+                                              IndexList&              black_removed,
+                                              IndexList&              black_added,
+                                              const ThreatWeightType* prefetchBase,
+                                              IndexType               prefetchStride) {
+
+    for (const auto& dirty : diff.list)
+    {
+        const Piece  attacker = dirty.pc();
+        const Piece  attacked = dirty.threatened_pc();
+        const Square from     = dirty.pc_sq();
+        const Square to       = dirty.threatened_sq();
+        const bool   add      = dirty.add();
+
+        auto& white_insert = add ? white_added : white_removed;
+        auto& black_insert = add ? black_added : black_removed;
+
+        const IndexType white_index = make_index(WHITE, attacker, from, to, attacked, white_ksq);
+        const IndexType black_index = make_index(BLACK, attacker, from, to, attacked, black_ksq);
+
+        if (prefetchBase)
+        {
+            prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
+              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(white_index) * prefetchStride));
+            prefetch<PrefetchRw::READ, PrefetchLoc::LOW>(reinterpret_cast<const void*>(
+              reinterpret_cast<uintptr_t>(prefetchBase) + uintptr_t(black_index) * prefetchStride));
+        }
+
+        white_insert.push_back_if_lt(white_index, Dimensions);
+        black_insert.push_back_if_lt(black_index, Dimensions);
     }
 }
 

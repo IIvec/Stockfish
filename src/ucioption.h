@@ -40,7 +40,6 @@ class Option {
    public:
     using OnChange = std::function<std::optional<std::string>(const Option&)>;
 
-    Option(const OptionsMap*);
     Option(OnChange = nullptr);
     Option(bool v, OnChange = nullptr);
     Option(const char* v, OnChange = nullptr);
@@ -64,8 +63,8 @@ class Option {
 
 
     std::string       defaultValue, currentValue, type;
-    int               min, max;
-    usize             idx;
+    int               min = 0, max = 0;
+    usize             idx = 0;
     OnChange          on_change;
     const OptionsMap* parent = nullptr;
 };

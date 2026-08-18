@@ -80,18 +80,18 @@ SRCS = attacks.cpp benchmark.cpp bitboard.cpp evaluate.cpp main.cpp \
 	misc.cpp movegen.cpp movepick.cpp position.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
 	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/network.cpp \
-	nnue/features/half_ka_v2_hm.cpp nnue/features/full_threats.cpp \
+	nnue/features/half_ka_v2_hm.cpp nnue/features/full_threats.cpp nnue/features/pp_3wide.cpp \
 	engine.cpp score.cpp memory.cpp
 
 OTHER_SRCS = universal/entry_x86.cpp universal/entry_arm64.cpp universal/entry_riscv64.cpp universal/nnue_embed.cpp
 
 HEADERS = attacks.h benchmark.h bitboard.h evaluate.h misc.h movegen.h movepick.h history.h \
 		nnue/nnue_misc.h nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
-		nnue/layers/affine_transform.h nnue/layers/affine_transform_sparse_input.h \
+		nnue/features/pp_3wide.h nnue/layers/affine_transform.h nnue/layers/affine_transform_sparse_input.h \
 		nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h nnue/nnue_accumulator.h \
 		nnue/nnue_architecture.h nnue/nnue_common.h nnue/nnue_feature_transformer.h nnue/simd.h \
-		nnue/nnz_helper.h position.h search.h syzygy/tbprobe.h thread.h thread_win32_osx.h timeman.h \
-		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h shm.h shm_linux.h
+		nnue/nnz_helper.h position.h search.h syzygy/tbprobe.h thread.h thread_native.h timeman.h \
+		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h shm.h shm_unix.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
 
@@ -685,31 +685,27 @@ else ifeq ($(COMP),mingw)
 	CXXFLAGS += -fno-ipa-cp-clone
 endif
 
-### On mingw use Windows threads, otherwise POSIX
-ifneq ($(comp),mingw)
-	CXXFLAGS += -DUSE_PTHREADS
-	# On Android Bionic's C library comes with its own pthread implementation bundled in
-	ifneq ($(OS),Android)
-		# Haiku has pthreads in its libroot, so only link it in on other platforms
-		ifneq ($(KERNEL),Haiku)
-			ifneq ($(COMP),ndk)
-			ifneq ($(arch),wasm32)
-				LDFLAGS += -lpthread
+# On Android Bionic's C library comes with its own pthread implementation bundled in
+ifneq ($(OS),Android)
+	# Haiku has pthreads in its libroot, so only link it in on other platforms
+	ifneq ($(KERNEL),Haiku)
+		ifneq ($(COMP),ndk)
+		ifneq ($(arch),wasm32)
+			LDFLAGS += -lpthread
 
-				add_lrt = yes
-				ifeq ($(target_windows),yes)
-					add_lrt = no
-				endif
-
-				ifeq ($(TARGET_KERNEL),Darwin)
-					add_lrt = no
-				endif
-
-				ifeq ($(add_lrt),yes)
-					LDFLAGS += -lrt
-				endif
+			add_lrt = yes
+			ifeq ($(target_windows),yes)
+				add_lrt = no
 			endif
+
+			ifeq ($(TARGET_KERNEL),Darwin)
+				add_lrt = no
 			endif
+
+			ifeq ($(add_lrt),yes)
+				LDFLAGS += -lrt
+			endif
+		endif
 		endif
 	endif
 endif
@@ -903,7 +899,7 @@ endif
 ifeq ($(pext),yes)
 	CXXFLAGS += -DUSE_PEXT
 	ifeq ($(comp),$(filter $(comp),gcc clang mingw icx))
-		CXXFLAGS += -mbmi2 -DUSE_COMPTIME_ATTACKS
+		CXXFLAGS += -mbmi2
 	endif
 endif
 
@@ -918,7 +914,7 @@ BUILD_DATE_FILE      := .build_date.txt
 BUILD_DIFFINDEX_FILE := .build_diffindex.txt
 GIT_SHA              := $(shell git rev-parse HEAD 2>/dev/null | cut -c 1-8 || true)
 GIT_DATE             := $(shell git show -s --date=format:%Y%m%d --format=%cd HEAD 2>/dev/null || true)
-GIT_DIFFINDEX        := $(shell git diff-index --quiet HEAD -- 2>/dev/null; [ $$? -eq 1 ] && echo 1 || true)
+GIT_DIFFINDEX        := $(shell git update-index --refresh >/dev/null 2>&1; git -c core.filemode=false -c core.autocrlf=false  diff-index --quiet HEAD -- 2>/dev/null; [ $$? -eq 1 ] && echo 1 || true)
 COMPILER_DATE        := $(shell date +%Y%m%d 2>/dev/null)
 
 BUILD_DATE           := $(if $(GIT_DATE),$(GIT_DATE),$(COMPILER_DATE))
@@ -1225,6 +1221,9 @@ profileclean:
 	@rm -f ./-lstdc++.res
 
 universalclean:
+# On Windows "ln -s" to a directory makes a native directory symlink that rm
+# cannot unlink; rmdir unlinks it without following it. No-op elsewhere.
+	@find $(TEMP_DIR) -type l -exec rmdir {} + 2>/dev/null || true
 	@rm -rf $(TEMP_DIR)
 	@rm -f universal/network_dump.inc
 

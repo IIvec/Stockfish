@@ -24,26 +24,24 @@
 
 namespace Stockfish::Attacks {
 
-namespace {
-
 Bitboard LineBB[SQUARE_NB][SQUARE_NB];
 Bitboard BetweenBB[SQUARE_NB][SQUARE_NB];
 Bitboard RayPassBB[SQUARE_NB][SQUARE_NB];
 
-#ifdef USE_DUAL_HYPERBOLA_QUINT
-alignas(64) DualMagic DualMagics[SQUARE_NB];
-#else
+namespace {
+
+#ifndef USE_DUAL_HYPERBOLA_QUINT
 alignas(64) Magic Magics[SQUARE_NB][2];
 #endif
 
 }
 
-[[maybe_unused]] static Bitboard line_mask(Square sq, Direction d1, Direction d2) {
-    Bitboard mask = 0, dest;
+[[maybe_unused]] static constexpr Bitboard line_mask(Square sq, Direction d1, Direction d2) {
+    Bitboard mask = 0;
     for (Direction d : {d1, d2})
     {
         Square s = sq;
-        while ((dest = safe_destination(s, d)))
+        while (Bitboard dest = safe_destination(s, d))
         {
             mask |= dest;
             s += d;
@@ -69,16 +67,18 @@ static void init_magics(Magic magics[][2]) {
 #elif defined(USE_DUAL_HYPERBOLA_QUINT)
 
 // Sliding attacks within a rank, indexed by the slider's file and the
-// 8-bit rank occupancy, yielding the 8-bit attack set on that rank
-constexpr auto RankAttacks = []() {
-    std::array<std::array<u8, 256>, FILE_NB> table{};
+// 6 inner bits of the rank occupancy (edge squares never affect the
+// attack set), yielding the 8-bit attack set on that rank
+alignas(64) constexpr auto RankAttacks = []() {
+    std::array<std::array<u8, 64>, FILE_NB> table{};
     for (int file = 0; file < 8; ++file)
-        for (int occ = 0; occ < 256; ++occ)
-            table[file][occ] = u8(sliding_attack(ROOK, Square(file), occ));
+        for (int occ6 = 0; occ6 < 64; ++occ6)
+            table[file][occ6] = u8(sliding_attack(ROOK, Square(file), occ6 << 1));
     return table;
 }();
 
-static void init_dual_magics(DualMagic magics[]) {
+static constexpr auto make_dual_magics() {
+    std::array<DualMagic, SQUARE_NB> magics{};
     for (Square s = SQ_A1; s <= SQ_H8; ++s)
     {
         DualMagic& m        = magics[s];
@@ -91,7 +91,10 @@ static void init_dual_magics(DualMagic magics[]) {
         m.rankAttacksLookup = RankAttacks[int(file_of(s))].data();
         m.shift             = 8 * int(rank_of(s));
     }
+    return magics;
 }
+
+alignas(64) extern constexpr std::array<DualMagic, SQUARE_NB> DualMagics = make_dual_magics();
 
 #else
 
@@ -162,9 +165,7 @@ void init() {
 
 #ifdef USE_HYPERBOLA_QUINT
     init_magics(Magics);
-#elif defined(USE_DUAL_HYPERBOLA_QUINT)
-    init_dual_magics(DualMagics);
-#else
+#elif !defined(USE_DUAL_HYPERBOLA_QUINT)
     init_magics(ROOK, RookTable.data(), Magics);
     init_magics(BISHOP, BishopTable.data(), Magics);
 #endif
@@ -187,28 +188,11 @@ void init() {
     }
 }
 
-#ifdef USE_DUAL_HYPERBOLA_QUINT
-const DualMagic& dual_magic(Square s) { return DualMagics[s]; }
-#else
+#ifndef USE_DUAL_HYPERBOLA_QUINT
 const Magic& magic(Square s, PieceType pt) {
     assert((pt == BISHOP || pt == ROOK) && is_ok(s));
     return Magics[s][pt - BISHOP];
 }
 #endif
-
-Bitboard line_bb(Square s1, Square s2) {
-    assert(is_ok(s1) && is_ok(s2));
-    return LineBB[s1][s2];
-}
-
-Bitboard between_bb(Square s1, Square s2) {
-    assert(is_ok(s1) && is_ok(s2));
-    return BetweenBB[s1][s2];
-}
-
-Bitboard ray_pass_bb(Square s1, Square s2) {
-    assert(is_ok(s1) && is_ok(s2));
-    return RayPassBB[s1][s2];
-}
 
 }  // namespace Stockfish::Attacks

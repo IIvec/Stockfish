@@ -63,7 +63,7 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     states(new std::deque<StateInfo>(1)),
     threads(),
     networkFile{std::nullopt, ""},
-    network(numaContext) {
+    network(numaContext, get_default_network()) {
 
     pos.set(StartFEN, false, &states->back());
 
@@ -139,7 +139,6 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
           return std::nullopt;
       }));
 
-    network = get_default_network();
     threads.clear();
     threads.ensure_network_replicated();
     resize_threads();
@@ -185,6 +184,8 @@ void Engine::set_on_iter(std::function<void(const Engine::InfoIter&)>&& f) {
 void Engine::set_on_bestmove(std::function<void(std::string_view, std::string_view)>&& f) {
     updateContext.onBestmove = std::move(f);
 }
+
+void Engine::set_on_start(std::function<void()>&& f) { updateContext.onStart = std::move(f); }
 
 void Engine::set_on_verify_network(std::function<void(std::string_view)>&& f) {
     onVerifyNetwork = std::move(f);
