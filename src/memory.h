@@ -22,11 +22,13 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
 #include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
-#include <cstring>
 
 #include "types.h"
 #include "misc.h"
@@ -60,10 +62,20 @@ using AdjustTokenPrivileges_t =
 }
 #endif
 
+#if defined(__linux__) && !defined(__ANDROID__)
+    #include <sys/mman.h>
+    #include <unistd.h>
+#endif
+
 
 namespace Stockfish {
 
 constexpr usize HugePageSize = usize(1) << 30;
+
+[[noreturn]] inline void report_failed_allocation(usize bytes) {
+    std::cerr << "Failed to allocate " << bytes << " bytes." << std::endl;
+    std::exit(EXIT_FAILURE);
+}
 
 void* std_aligned_alloc(usize alignment, usize size);
 void  std_aligned_free(void* ptr);
@@ -118,6 +130,8 @@ template<typename T, typename ALLOC_FUNC, typename... Args>
 inline std::enable_if_t<!std::is_array_v<T>, T*> memory_allocator(ALLOC_FUNC alloc_func,
                                                                   Args&&... args) {
     void* raw_memory = alloc_func(sizeof(T));
+    if (raw_memory == nullptr)
+        report_failed_allocation(sizeof(T));
     ASSERT_ALIGNED(raw_memory, alignof(T));
     return new (raw_memory) T(std::forward<Args>(args)...);
 }
@@ -131,8 +145,10 @@ memory_allocator(ALLOC_FUNC alloc_func, usize num) {
     const usize array_offset = std::max(sizeof(usize), alignof(ElementType));
 
     // Save the array size in the memory location
-    char* raw_memory =
-      reinterpret_cast<char*>(alloc_func(array_offset + num * sizeof(ElementType)));
+    const usize bytes      = array_offset + num * sizeof(ElementType);
+    char*       raw_memory = reinterpret_cast<char*>(alloc_func(bytes));
+    if (raw_memory == nullptr)
+        report_failed_allocation(bytes);
     ASSERT_ALIGNED(raw_memory, alignof(T));
 
     new (raw_memory) usize(num);
@@ -245,6 +261,51 @@ T* align_ptr_up(T* ptr) {
     return reinterpret_cast<T*>(
       reinterpret_cast<char*>((ptrint + (Alignment - 1)) / Alignment * Alignment));
 }
+
+#if defined(__linux__) && !defined(__ANDROID__)
+
+// Allocate size bytes aligned to a 2 MB boundary using mmap.
+// On success the returned pointer can be freed with munmap(ptr, size).
+inline void* mmap_huge_aligned(usize size, int flags, int fd = -1, off_t offset = 0) {
+    constexpr usize Alignment = 2 * 1024 * 1024;
+    const long      pageSize  = sysconf(_SC_PAGESIZE);
+
+    if (size >= Alignment && pageSize > 0)
+    {
+        const usize mappingSize =
+          ((size + static_cast<usize>(pageSize) - 1) / static_cast<usize>(pageSize))
+          * static_cast<usize>(pageSize);
+        const usize reservationSize = mappingSize + Alignment;
+        void*       reservation =
+          mmap(nullptr, reservationSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+        if (reservation != MAP_FAILED)
+        {
+            char* const base        = static_cast<char*>(reservation);
+            char* const alignedBase = align_ptr_up<Alignment>(base);
+
+            void* mapped =
+              mmap(alignedBase, size, PROT_READ | PROT_WRITE, flags | MAP_FIXED, fd, offset);
+
+            if (mapped != MAP_FAILED)
+            {
+                const usize prefixSize = static_cast<usize>(alignedBase - base);
+                const usize suffixSize = reservationSize - prefixSize - mappingSize;
+                if (prefixSize)
+                    munmap(reservation, prefixSize);
+                if (suffixSize)
+                    munmap(alignedBase + mappingSize, suffixSize);
+                return mapped;
+            }
+
+            munmap(reservation, reservationSize);
+        }
+    }
+
+    return mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, fd, offset);
+}
+
+#endif
 
 #if defined(_WIN32)
 

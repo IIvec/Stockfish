@@ -60,6 +60,11 @@ class Network;
 
 namespace Search {
 
+// syzygy_extend_pv() may lead to PVs longer than MAX_PLY
+struct RootPVMoves: public std::vector<Move> {
+    RootPVMoves() { reserve(MAX_PLY); }
+};
+
 struct PVMoves {
     Move  moves[MAX_PLY + 1];
     usize length = 0;
@@ -92,12 +97,16 @@ struct PVMoves {
         length = childPv ? childPv->length : 0;
 
         if (childPv)
-        {
             std::memcpy(moves + 1, childPv->moves, length * sizeof(Move));
-        }
 
         moves[0] = move;
         ++length;
+    }
+
+    PVMoves& operator=(const RootPVMoves& rhs) {
+        length = std::min(rhs.size(), usize(MAX_PLY));
+        std::memcpy(moves, rhs.data(), length * sizeof(Move));
+        return *this;
     }
 };
 
@@ -130,30 +139,30 @@ struct RootMove {
 
     explicit RootMove(Move m) { pv.push_back(m); }
     bool extract_ponder_from_tt(const TranspositionTable& tt, Position& pos);
-    bool score_is_bound() const { return scoreLowerbound || scoreUpperbound; }
-    bool score_is_exact_loss() const {
-        return score != -VALUE_INFINITE && is_loss(score) && !score_is_bound();
+    bool is_inexact() const { return inexactLower || inexactUpper; }
+    bool is_exact_loss() const {
+        return score != -VALUE_INFINITE && is_loss(score) && !is_inexact();
     }
-    void unset_bound_flags() { scoreLowerbound = scoreUpperbound = false; }
+    void unset_inexact() { inexactLower = inexactUpper = false; }
     bool operator==(const Move& m) const { return pv[0] == m; }
     // Sort in descending order
     bool operator<(const RootMove& m) const {
         return m.score != score ? m.score < score : m.previousScore < previousScore;
     }
 
-    u64     effort             = 0;
-    Value   score              = -VALUE_INFINITE;
-    Value   previousScore      = -VALUE_INFINITE;
-    Value   averageScore       = -VALUE_INFINITE;
-    Value   meanSquaredScore   = -VALUE_INFINITE * VALUE_INFINITE;
-    Value   uciScore           = -VALUE_INFINITE;
-    bool    scoreLowerbound    = false;
-    bool    scoreUpperbound    = false;
-    bool    previousScoreExact = false;
-    int     selDepth           = 0;
-    int     tbRank             = 0;
-    Value   tbScore;
-    PVMoves pv, previousPV;
+    u64         effort           = 0;
+    Value       score            = -VALUE_INFINITE;
+    Value       previousScore    = -VALUE_INFINITE;
+    Value       averageScore     = -VALUE_INFINITE;
+    Value       meanSquaredScore = -VALUE_INFINITE * VALUE_INFINITE;
+    Value       uciScore         = -VALUE_INFINITE;
+    bool        inexactLower     = false;  // By default root scores are exact, unless flagged as a
+    bool        inexactUpper     = false;  // one-sided bound here. See also `enum Bound` in types.h
+    bool        previousScoreExact = false;
+    int         selDepth           = 0;
+    int         tbRank             = 0;
+    Value       tbScore;
+    RootPVMoves pv, previousPV;
 };
 
 using RootMoves = std::vector<RootMove>;

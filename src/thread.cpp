@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <deque>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -55,7 +56,14 @@ Thread::Thread(Search::SharedState&                    sharedState,
     idxInNuma(numaN),
     totalNuma(totalNumaCount),
     nthreads(sharedState.options["Threads"]),
-    stdThread(&Thread::idle_loop, this) {
+    stdThread(
+      create_native_thread(NativeThreadOptions{}.setLargeStack(true), &Thread::idle_loop, this)) {
+
+    if (!stdThread.joinable())
+    {
+        std::cerr << "Failed to create search thread\n";
+        std::exit(EXIT_FAILURE);
+    }
 
     wait_for_search_finished();
 
@@ -252,7 +260,7 @@ void ThreadPool::set(const NumaConfig&                           numaConfig,
 
 // Sets threadPool data to initial values
 void ThreadPool::clear() {
-    if (threads.size() == 0)
+    if (threads.empty())
         return;
 
     for (auto&& th : threads)
@@ -372,10 +380,10 @@ Thread* ThreadPool::get_best_thread() const {
         // Aborted (d1) searches may lead to inexact win (or loss) scores.
         const bool bestThreadDecisive = bestThreadMove.score != -VALUE_INFINITE
                                      && is_decisive(bestThreadMove.score)
-                                     && !bestThreadMove.score_is_bound();
+                                     && !bestThreadMove.is_inexact();
         const bool newThreadDecisive = newThreadMove.score != -VALUE_INFINITE
                                     && is_decisive(newThreadMove.score)
-                                    && !newThreadMove.score_is_bound();
+                                    && !newThreadMove.is_inexact();
 
         if (bestThreadDecisive)
         {
