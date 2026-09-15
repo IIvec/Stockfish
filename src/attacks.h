@@ -133,7 +133,8 @@ struct alignas(32) DualMagic {
         Bitboard rankAttacks  = rowOccupancy << shift;
 
         // [bishop, rook]
-        return {_mm_extract_epi64(rookBishop, 1), _mm_cvtsi128_si64(rookBishop) + rankAttacks};
+        return {_mm_extract_epi64(rookBishop, 1),
+                _mm_cvtsi128_si64(_mm256_castsi256_si128(result)) + rankAttacks};
     }
 };
 
@@ -254,18 +255,6 @@ inline constexpr auto PseudoAttacks = []() constexpr {
         attacks[KNIGHT][s1] = pseudo_attacks(KNIGHT, s1);
         attacks[QUEEN][s1] = attacks[BISHOP][s1] = pseudo_attacks(BISHOP, s1);
         attacks[QUEEN][s1] |= attacks[ROOK][s1]  = pseudo_attacks(ROOK, s1);
-    }
-
-    return attacks;
-}();
-
-inline constexpr auto PawnPushOrAttacks = []() constexpr {
-    std::array<std::array<Bitboard, SQUARE_NB>, COLOR_NB> attacks{};
-
-    for (Square s1 = SQ_A1; s1 <= SQ_H8; ++s1)
-    {
-        attacks[WHITE][s1] = pawn_single_push_bb(WHITE, square_bb(s1)) | PseudoAttacks[WHITE][s1];
-        attacks[BLACK][s1] = pawn_single_push_bb(BLACK, square_bb(s1)) | PseudoAttacks[BLACK][s1];
     }
 
     return attacks;
