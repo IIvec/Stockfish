@@ -52,8 +52,10 @@
 
 namespace Stockfish {
 
-static constexpr std::array<int, 16> lmrDivisor = {3637, 2787, 2761, 2939, 3171, 3347, 3147, 2762,
-                                                   2772, 3106, 3107, 3060, 3112, 2991, 3090, 3542};
+inline int lmr_divisor(int depth) {
+    int d = std::min(depth, 16);
+    return 3000 + 7 * (d - 8) * (d - 8);
+}
 
 namespace TB = Tablebases;
 
@@ -92,12 +94,13 @@ int correction_value(const Worker& w, const Position& pos, const Stack* const ss
     const int   bnpcv  = shared.nonpawn_correction_entry<BLACK>(pos)[us].nonPawnBlack;
     const int   cntcv =
       m.is_ok()
-          ? 8761
-            * ((*(ss - 2)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
-               + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()])
-          : 64049;
+          ? 7885
+              * ((*(ss - 2)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
+                 + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()])
+            + 6307 * (*(ss - 6)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
+          : 80695;
 
-    return 15341 * pcv + 10569 * micv + 12906 * (wnpcv + bnpcv) + cntcv;
+    return 13806 * pcv + 9512 * micv + 11615 * (wnpcv + bnpcv) + cntcv;
 }
 
 // Add correctionHistory value to raw staticEval and guarantee evaluation
@@ -127,6 +130,7 @@ void update_correction_history(const Position& pos,
         const Piece  pc = pos.piece_on(to);
         (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * 130 / 128;
         (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * 70 / 128;
+        (*(ss - 6)->continuationCorrectionHistory)[pc][to] << bonus * 35 / 128;
     }
 }
 
@@ -662,6 +666,7 @@ void Search::Worker::do_move(
 
         prefetch(&(*(ss - 1)->continuationCorrectionHistory)[pc][to]);
         prefetch(&(*(ss - 3)->continuationCorrectionHistory)[pc][to]);
+        prefetch(&(*(ss - 5)->continuationCorrectionHistory)[pc][to]);
     }
 
     ++nodes;
@@ -884,52 +889,56 @@ Value Search::Worker::search(
 
     // Step 6. At non-PV nodes we check for an early TT cutoff. Note that we
     //         always check the validity of the TT value because of access races.
-    if (!PvNode && !excludedMove && ttData.depth > depth - (ttData.value <= beta)
-        && is_valid(ttData.value)
-        && (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER))
-        && (cutNode == (ttData.value >= beta) || depth > 4))
+    if (!PvNode && !excludedMove && is_valid(ttData.value)
+        && ttData.depth > depth - (ttData.value <= beta))
     {
-        // If the ttMove is quiet, update move sorting heuristics on TT hit
-        if (ttData.move && ttData.value >= beta)
+        // Case A: TT entry can produce a cutoff
+        if ((ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER))
+            && (cutNode == (ttData.value >= beta) || depth > 4))
         {
-            // Bonus for a quiet ttMove that fails high
-            if (!ttCapture)
-                update_quiet_histories(pos, ss, *this, ttData.move, 131 * depth);
-
-            // Extra penalty for early quiet moves of the previous ply
-            if (prevSq != SQ_NONE && (ss - 1)->moveCount < 5 && !priorCapture)
-                update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -2210);
-        }
-
-        // Partial workaround for the graph history interaction problem.
-        // For high rule50 counts don't produce transposition table cutoffs.
-        if (pos.rule50_count() < 96)
-        {
-            if (depth >= 7 && ttData.move && pos.pseudo_legal(ttData.move) && pos.legal(ttData.move)
-                && !is_decisive(ttData.value))
+            // If the ttMove is quiet, update move sorting heuristics on TT hit
+            if (ttData.move && ttData.value >= beta)
             {
-                pos.do_move(ttData.move, st);
-                Key nextPosKey                             = pos.key();
-                auto [ttHitNext, ttDataNext, ttWriterNext] = tt.probe(nextPosKey);
-                pos.undo_move(ttData.move);
+                // Bonus for a quiet ttMove that fails high
+                if (!ttCapture)
+                    update_quiet_histories(pos, ss, *this, ttData.move, 131 * depth);
 
-                // Check that the ttValue after the tt move would also trigger a cutoff
-                if (!is_valid(ttDataNext.value))
-                    return ttData.value;
+                // Extra penalty for early quiet moves of the previous ply
+                if (prevSq != SQ_NONE && (ss - 1)->moveCount < 5 && !priorCapture)
+                    update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -2210);
+            }
 
-                if ((ttData.value >= beta) == (-ttDataNext.value >= beta))
+            // Partial workaround for the graph history interaction problem.
+            // For high rule50 counts don't produce transposition table cutoffs.
+            if (pos.rule50_count() < 96)
+            {
+                if (depth >= 7 && ttData.move && pos.pseudo_legal(ttData.move)
+                    && pos.legal(ttData.move) && !is_decisive(ttData.value))
+                {
+                    pos.do_move(ttData.move, st);
+                    Key nextPosKey                             = pos.key();
+                    auto [ttHitNext, ttDataNext, ttWriterNext] = tt.probe(nextPosKey);
+                    pos.undo_move(ttData.move);
+
+                    // Check that the ttValue after the tt move would also trigger a cutoff
+                    if (!is_valid(ttDataNext.value))
+                        return ttData.value;
+
+                    if ((ttData.value >= beta) == (-ttDataNext.value >= beta))
+                        return ttData.value;
+                }
+                else
                     return ttData.value;
             }
-            else
-                return ttData.value;
         }
-    }  // No cutoff, but why? Compare the aspiration window to the inexact bound
-    else if (!PvNode && !excludedMove && ttData.depth > depth - (ttData.value <= beta)
-             && is_valid(ttData.value) && ttData.bound != BOUND_EXACT
-             && ttData.bound & (ttData.value >= beta ? BOUND_UPPER : BOUND_LOWER) && depth > 5)
-    {
-        // If such a mismatch is the only reason cutoff failed, the TT entry is now useless
-        ttWriter.penalize(1);
+        // Case B: No cutoff, but depth was sufficient. Compare the aspiration window to the bound.
+        else if (ttData.bound != BOUND_EXACT
+                 && (ttData.bound & (ttData.value >= beta ? BOUND_UPPER : BOUND_LOWER))
+                 && depth > 5)
+        {
+            // If such a mismatch is the only reason cutoff failed, the TT entry is now useless
+            ttWriter.penalize(1);
+        }
     }
 
     // Step 7. Tablebases probe
@@ -1001,7 +1010,7 @@ Value Search::Worker::search(
 
     // Step 8. Razoring
     // If eval is really low, skip search entirely and return the qsearch value
-    if (!PvNode && eval < alpha - 482 * depth && !seekMate)
+    if (allNode && eval < alpha - 342 * depth && !seekMate)
         return qsearch<NonPV>(pos, ss, alpha, beta);
 
     // Step 9. Futility pruning: child node
@@ -1216,7 +1225,6 @@ moves_loop:  // When in check, search starts here
             }
             else if (!ss->followPV || !PvNode)
             {
-                int dIndex  = std::min(int(depth), int(lmrDivisor.size())) - 1;
                 int history = (*contHist[0])[movedPiece][move.to_sq()]
                             + (*contHist[1])[movedPiece][move.to_sq()]
                             + sharedHistory.pawn_entry(pos)[movedPiece][move.to_sq()];
@@ -1228,7 +1236,7 @@ moves_loop:  // When in check, search starts here
                 history += 69 * mainHistory[us][move.raw()] / 32;
 
                 // (*Scaler): Generally, lower divisors scale well
-                lmrDepth += history / lmrDivisor[dIndex];
+                lmrDepth += history / lmr_divisor(depth);
 
                 Value futilityValue =
                   ss->staticEval + 119 * lmrDepth + 90 * (ss->staticEval > alpha) + 164;
@@ -1383,10 +1391,10 @@ moves_loop:  // When in check, search starts here
         {
             // In general we want to cap the LMR depth search at newDepth, but when
             // reduction is negative, we allow this move a limited search extension
-            // beyond the first move depth.
-            // To prevent problems when the max value is less than the min value,
-            // std::clamp has been replaced by a more robust implementation.
-            Depth d = std::max(1, std::min(newDepth - r / 1024, newDepth + 2)) + PvNode;
+            // beyond the first move depth. To avoid search explosion, extensions
+            // are not allowed deep, relative to rootDepth, in the search tree.
+            Depth d =
+              std::max(1, newDepth + std::min(-r / 1024, ss->ply < 2 * rootDepth ? 2 : 0)) + PvNode;
 
             ss->reduction = newDepth - d;
             value         = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, d, true);
