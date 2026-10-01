@@ -646,18 +646,19 @@ bool Search::Worker::iterative_deepening() {
 
 
 void Search::Worker::do_move(Position& pos, const Move move, StateInfo& st, Stack* const ss) {
-    do_move(pos, move, st, pos.gives_check(move), ss);
+    do_move(pos, move, st, pos.gives_check(move), pos.capture_stage(move), ss);
 }
 
-void Search::Worker::do_move(
-  Position& pos, const Move move, StateInfo& st, const bool givesCheck, Stack* const ss) {
-
+void Search::Worker::do_move(Position&    pos,
+                             const Move   move,
+                             StateInfo&   st,
+                             const bool   givesCheck,
+                             const bool   capture,
+                             Stack* const ss) {
     // prefetch_key() does not model castling, en passant or promotion exactly.
     // The correction-history prefetches also approximate castling and promotion.
     // For these rare moves the prefetches land on unused lines.
     prefetch(tt.first_entry(pos.prefetch_key(move)));
-
-    bool capture = pos.capture_stage(move);
 
     if (ss != nullptr)
     {
@@ -741,7 +742,11 @@ Value Search::Worker::search(
     constexpr bool PvNode   = nodeType != NonPV;
     constexpr bool rootNode = nodeType == Root;
     const bool     allNode  = !(PvNode || cutNode);
-    const bool     seekMate = rootDepth >= 16 && std::abs(rootMoves[pvIdx].score) >= 2000;
+
+    assert(rootDepth);
+    // Do not tune these values. They are not intended for playing strength.
+    const bool seekMate =
+      std::abs(rootMoves[pvIdx].score) >= 750 + 220000 / (rootDepth * rootDepth);
 
     // Dive into quiescence search when the depth reaches zero
     if (depth <= 0)
@@ -1098,10 +1103,10 @@ Value Search::Worker::search(
             if (move == excludedMove || !pos.legal(move))
                 continue;
 
-            assert(pos.capture_stage(move));
+            capture = pos.capture_stage(move);
+            assert(capture);
 
-            do_move(pos, move, st, ss);
-
+            do_move(pos, move, st, pos.gives_check(move), capture, ss);
             // Perform a preliminary qsearch to verify that the move holds
             value = -qsearch<NonPV>(pos, ss + 1, -probCutBeta, -probCutBeta + 1);
 
@@ -1309,7 +1314,7 @@ moves_loop:  // When in check, search starts here
                 if (!ss->inCheck && value > ss->staticEval)
                 {
                     const int bonus =
-                      std::clamp(int(value - ss->staticEval) * singularDepth * 177 / 1024,
+                      std::clamp(int(value - ss->staticEval) * 664 / 1024,
                                  -CORRECTION_HISTORY_LIMIT / 4, CORRECTION_HISTORY_LIMIT / 4);
                     update_correction_history(pos, ss, *this, bonus);
                 }
@@ -1333,7 +1338,7 @@ moves_loop:  // When in check, search starts here
         u64 nodeCount = rootNode ? u64(nodes) : 0;
 
         // Step 17. Make the move
-        do_move(pos, move, st, givesCheck, ss);
+        do_move(pos, move, st, givesCheck, capture, ss);
 
         // Add extension to new depth
         newDepth += extension;
@@ -1849,7 +1854,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         }
 
         // Step 7. Make and search the move
-        do_move(pos, move, st, givesCheck, ss);
+        do_move(pos, move, st, givesCheck, capture, ss);
 
         value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha);
         undo_move(pos, move);
