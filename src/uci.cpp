@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <sstream>
@@ -231,6 +232,11 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
         if (is.fail())
             terminate_on_critical_error("Invalid argument for '" + token + "'");
     }
+
+    // Sanitize negative time values, zero for stm means no TM
+    for (auto* t : {&limits.time[WHITE], &limits.time[BLACK], &limits.movetime})
+        if (*t < 0)
+            *t = 1;
 
     return limits;
 }
@@ -638,7 +644,7 @@ std::string UCIEngine::to_lower(std::string str) {
 Move UCIEngine::to_move(const Position& pos, std::string str) {
     str = to_lower(str);
 
-    for (const auto& m : MoveList<LEGAL>(pos))
+    for (const auto& m : MoveList<ALL>(pos))
         if (str == move(m, pos.is_chess960()))
             return m;
 

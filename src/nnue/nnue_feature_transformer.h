@@ -126,6 +126,26 @@ class FeatureTransformer {
 
     static constexpr auto InversePackusEpi16Order = invert_permutation(PackusEpi16Order);
 
+#if defined(USE_PAIRED_WIDENING_ADD)
+    // The int8 weight rows are consumed one full vector register (sizeof(vec_t)
+    // bytes) at a time: unpack{lo,hi}_epi8 interleave the bytes of two rows and
+    // maddubs against a vector of ones sums each pair into an int16 lane. Both
+    // unpacks work within 128-bit lanes, so the int16 results of a chunk come out
+    // with its 8-byte blocks in the order {0, 2, 4, 6, ...} (lo) and {1, 3, 5, 7,
+    // ...} (hi). Storing the 8-byte blocks of every chunk in this order at load
+    // time makes the two output registers hold consecutive accumulator lanes, so
+    // the accumulator layout is unchanged.
+    static constexpr auto WideningPairOrder = []() {
+        constexpr usize              NumBlocks = sizeof(SIMD::vec_t) / 8;
+        std::array<usize, NumBlocks> order{};
+        for (usize i = 0; i < NumBlocks; ++i)
+            order[i] = i % 2 == 0 ? i / 2 : NumBlocks / 2 + i / 2;
+        return order;
+    }();
+
+    static constexpr auto InverseWideningPairOrder = invert_permutation(WideningPairOrder);
+#endif
+
     static constexpr u32 combine_hash(std::initializer_list<u32> hashes) {
         u32 hash = 0;
         for (const auto component_hash : hashes)
@@ -145,14 +165,31 @@ class FeatureTransformer {
 
     void permute_weights() {
         permute<16>(biases, PackusEpi16Order);
-        permute<16>(weights, PackusEpi16Order);
+        permute<8>(weights, PackusEpi16Order);
 
         permute<8>(threatAndPpWeights, PackusEpi16Order);
+
+#if defined(USE_PAIRED_WIDENING_ADD)
+        // With 128-bit vectors the order is the identity
+        if constexpr (sizeof(SIMD::vec_t) > 16)
+        {
+            permute<8>(weights, WideningPairOrder);
+            permute<8>(threatAndPpWeights, WideningPairOrder);
+        }
+#endif
     }
 
     void unpermute_weights() {
+#if defined(USE_PAIRED_WIDENING_ADD)
+        if constexpr (sizeof(SIMD::vec_t) > 16)
+        {
+            permute<8>(weights, InverseWideningPairOrder);
+            permute<8>(threatAndPpWeights, InverseWideningPairOrder);
+        }
+#endif
+
         permute<16>(biases, InversePackusEpi16Order);
-        permute<16>(weights, InversePackusEpi16Order);
+        permute<8>(weights, InversePackusEpi16Order);
         permute<8>(threatAndPpWeights, InversePackusEpi16Order);
     }
 
@@ -161,12 +198,12 @@ class FeatureTransformer {
 
     // Read network parameters
     bool read_parameters(std::istream& stream) {
-        read_leb_128(stream, biases);
+        read_little_endian(stream, biases.data(), HalfDimensions);
 
         read_little_endian(stream, threatWeightData(), ThreatWeightSize);
         read_little_endian(stream, pawnPairWeightData(), PairWeightSize);
 
-        read_leb_128(stream, weights);
+        read_little_endian(stream, weights.data(), weights.size());
 
         permute_weights();
 
@@ -179,12 +216,12 @@ class FeatureTransformer {
 
         copy->unpermute_weights();
 
-        write_leb_128<BiasType>(stream, copy->biases);
+        write_little_endian(stream, copy->biases.data(), HalfDimensions);
 
         write_little_endian(stream, copy->threatWeightData(), ThreatWeightSize);
         write_little_endian(stream, copy->pawnPairWeightData(), PairWeightSize);
 
-        write_leb_128<WeightType>(stream, copy->weights);
+        write_little_endian(stream, copy->weights.data(), copy->weights.size());
 
         return !stream.fail();
     }
@@ -200,6 +237,10 @@ class FeatureTransformer {
         hash_combine(h, get_hash_value());
 
         return h;
+    }
+
+    const WeightType* psq_weights(int block) const {
+        return &weights[usize(PSQFeatureSet::block_offset(block)) * HalfDimensions];
     }
 
     // Convert input features
