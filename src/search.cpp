@@ -76,7 +76,7 @@ constexpr int SEARCHEDLIST_CAPACITY = 32;
 using SearchedList                  = ValueList<Move, SEARCHEDLIST_CAPACITY>;
 
 // Reductions lookup table indexed by depth or move number.
-double r = 22.0 + log(size_t(Option["Threads"])) / 2;
+double r = 22.0 + log(size_t(threads.size())) / 2;
 const std::array<int, MAX_MOVES> dreductions = [] {
     std::array<int, MAX_MOVES> table{};
     for (usize i = 1; i < table.size(); ++i)
