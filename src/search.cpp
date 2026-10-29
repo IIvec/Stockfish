@@ -76,17 +76,16 @@ constexpr int SEARCHEDLIST_CAPACITY = 32;
 using SearchedList                  = ValueList<Move, SEARCHEDLIST_CAPACITY>;
 
 // Reductions lookup table indexed by depth or move number.
-double r = 22.0 + log(size_t(threads.size())) / 2;
 const std::array<int, MAX_MOVES> dreductions = [] {
     std::array<int, MAX_MOVES> table{};
     for (usize i = 1; i < table.size(); ++i)
-        table[i] = int(r * 0.4 * i * (1.0 - exp(-8.0 / i)));
+        table[i] = int(8.8 * i * (1.0 - exp(-8.0 / i)));
     return table;
 }();
 const std::array<int, MAX_MOVES> mreductions = [] {
     std::array<int, MAX_MOVES> table{};
     for (usize i = 1; i < table.size(); ++i)
-        table[i] = int(r * log(i + 0.25 * log(i)));
+        table[i] = int(22.0 * log(i + 0.25 * log(i)));
     return table;
 }();
   
