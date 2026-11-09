@@ -126,11 +126,9 @@ void AccumulatorStack::evaluate_side(Color                     perspective,
     else
     {
         const auto& dirtyPiece = latest().dirtyPiece;
-        const auto  after      = PSQFeatureSet::block_state(pos);
-        const auto& before     = latest().blockBefore;
 
         if (dirtyPiece.pc == make_piece(perspective, KING)
-            && PSQFeatureSet::block(before, perspective) == PSQFeatureSet::block(after, perspective)
+            && latest().blockBefore[perspective] == PSQFeatureSet::block(pos, perspective)
             && accumulators[size - 2].computed[perspective]
             && pos.count<ALL_PIECES>() >= MIN_PC_COUNT_HYBRID
             && ((int(dirtyPiece.from) & 0b100) == (int(dirtyPiece.to) & 0b100))
@@ -147,12 +145,12 @@ void AccumulatorStack::evaluate_side(Color                     perspective,
 }
 
 // Find the earliest usable accumulator, this can either be a computed accumulator or the accumulator
-// state just before a change that requires full refresh.
+// state just after a change that requires full refresh.
 usize AccumulatorStack::find_last_usable_accumulator(Color           perspective,
                                                      const Position& pos) const noexcept {
 
-    // Backtrack psq block changes
-    auto after = PSQFeatureSet::block_state(pos);
+    // All traversed states must use the current block.
+    const int psqBlock = PSQFeatureSet::block(pos, perspective);
 
     for (usize curr_idx = size - 1; curr_idx > 0; curr_idx--)
     {
@@ -160,14 +158,12 @@ usize AccumulatorStack::find_last_usable_accumulator(Color           perspective
             return curr_idx;
 
         const auto& dirtyPiece = accumulators[curr_idx].dirtyPiece;
-        const auto& before     = accumulators[curr_idx].blockBefore;
+        const int   before     = accumulators[curr_idx].blockBefore[perspective];
 
         // Threat feature set refreshes require a king move across the center, i.e.,
         // a subset of halfka refreshes
-        if (PSQFeatureSet::requires_refresh(dirtyPiece, perspective, before, after))
+        if (PSQFeatureSet::requires_refresh(dirtyPiece, perspective, before, psqBlock))
             return curr_idx;
-
-        after = before;
     }
 
     return 0;
@@ -445,6 +441,27 @@ sf_always_inline Tile apply_feature_pair(Tile acc, const i8* data0, const i8* da
     return acc;
 }
 
+// acc += add - sub in one maddubs per half. Bias both rows to u8 so maddubs' unsigned
+// operand is valid; the bias cancels and |add - sub| <= 255 can't saturate.
+sf_always_inline Tile apply_feature_diff(Tile acc, const i8* add, const i8* sub) {
+    static_assert(Tiling::NumRegs % 2 == 0);
+    const vec_t bias  = vec_set_8(-128);
+    const vec_t signs = vec_set_16(-255);  // i8 pairs (+1, -1)
+        #if defined(__clang__)
+            #pragma clang loop unroll(full)
+        #elif defined(__GNUC__)
+            #pragma GCC unroll(Tiling::NumRegs / 2)
+        #endif
+    for (IndexType k = 0; k < Tiling::NumRegs; k += 2)
+    {
+        const vec_t ua = vec_xor(vec_load(reinterpret_cast<const vec_t*>(add) + k / 2), bias);
+        const vec_t us = vec_xor(vec_load(reinterpret_cast<const vec_t*>(sub) + k / 2), bias);
+        acc[k]         = vec_add_16(acc[k], vec_maddubs_16(vec_unpacklo_8(ua, us), signs));
+        acc[k + 1]     = vec_add_16(acc[k + 1], vec_maddubs_16(vec_unpackhi_8(ua, us), signs));
+    }
+    return acc;
+}
+
     #endif
 
 #endif
@@ -482,12 +499,68 @@ apply_features(IndexType j, Tile acc, const u16* indices, int count, const i8* w
     return acc;
 }
 
-template<int sign>
+// Applies one sign's psq and threat/pp rows. With paired widening, an odd row is held back
+// in `odd` so it can be combined with the other sign's odd row.
+template<int sign, bool Incremental = false>
+sf_always_inline Tile apply_features_but_odd(IndexType                 j,
+                                             Tile                      acc,
+                                             const u16*                psq,
+                                             int                       psqCount,
+                                             const u16*                thr,
+                                             int                       thrCount,
+                                             const FeatureTransformer& ft,
+                                             const WeightType*         psqBase,
+                                             const i8*&                odd) {
+    const auto* psqWeights = &psqBase[j];
+    const auto* thrWeights = &ft.threatAndPpWeights[j];
+    odd                    = nullptr;
+#if defined(USE_PAIRED_WIDENING_ADD)
+    if ((psqCount + thrCount) % 2 != 0)
+        odd = thrCount > 0 ? &thrWeights[usize(thr[--thrCount]) * Dimensions]
+                           : &psqWeights[usize(psq[--psqCount]) * Dimensions];
+
+    // Keep the last odd psq row paired with the first threat/pp row of the same sign.
+    if (psqCount % 2 != 0)
+    {
+        --psqCount;
+        acc = apply_feature_pair<sign>(acc, &psqWeights[usize(psq[psqCount]) * Dimensions],
+                                       &thrWeights[usize(thr[0]) * Dimensions]);
+        ++thr;
+        --thrCount;
+    }
+#endif
+
+    acc = apply_features<sign, Incremental>(j, acc, psq, psqCount, psqWeights);
+    return apply_features<sign>(j, acc, thr, thrCount, thrWeights);
+}
+
+sf_always_inline Tile apply_odd_features(IndexType j,
+                                         Tile      acc,
+                                         const i8* removed,
+                                         const i8* added) {
+#if defined(USE_PAIRED_WIDENING_ADD)
+    if (removed && added)
+        return apply_feature_diff(acc, added, removed);
+#endif
+    if (removed)
+        acc = apply_feature_single<-1>(j, acc, removed);
+    if (added)
+        acc = apply_feature_single<+1>(j, acc, added);
+    return acc;
+}
+
 sf_always_inline Tile apply_psq_features(IndexType                       j,
                                          Tile                            acc,
-                                         const PSQFeatureSet::IndexList& list,
+                                         const PSQFeatureSet::IndexList& removed,
+                                         const PSQFeatureSet::IndexList& added,
+                                         const FeatureTransformer&       ft,
                                          const WeightType*               psqWeights) {
-    return apply_features<sign>(j, acc, list.begin(), list.ssize(), &psqWeights[j]);
+    const i8 *oddRemoved, *oddAdded;
+    acc = apply_features_but_odd<-1>(j, acc, removed.begin(), removed.ssize(), nullptr, 0, ft,
+                                     psqWeights, oddRemoved);
+    acc = apply_features_but_odd<+1>(j, acc, added.begin(), added.ssize(), nullptr, 0, ft,
+                                     psqWeights, oddAdded);
+    return apply_odd_features(j, acc, oddRemoved, oddAdded);
 }
 
 template<int sign>
@@ -498,36 +571,29 @@ sf_always_inline Tile apply_threat_features(IndexType                          j
     return apply_features<sign>(j, acc, list.begin(), list.ssize(), &ft.threatAndPpWeights[j]);
 }
 
-template<int sign, bool Incremental = false>
+template<bool Incremental = false>
 sf_always_inline Tile apply_combined_features(IndexType                          j,
                                               Tile                               acc,
-                                              const PSQFeatureSet::IndexList&    psq,
-                                              const ThreatFeatureSet::IndexList& thr,
+                                              const PSQFeatureSet::IndexList&    psqRemoved,
+                                              const ThreatFeatureSet::IndexList& thrRemoved,
+                                              const PSQFeatureSet::IndexList&    psqAdded,
+                                              const ThreatFeatureSet::IndexList& thrAdded,
                                               const FeatureTransformer&          ft,
                                               const WeightType*                  psqBase) {
     if constexpr (Incremental)
-        assert(psq.size() == 1 || psq.size() == 2);
-
-    const auto* psqWeights = &psqBase[j];
-    const auto* thrWeights = &ft.threatAndPpWeights[j];
-    int         psqCount   = psq.ssize();
-    int         thrBegin   = 0;
-#if defined(USE_PAIRED_WIDENING_ADD)
-    // Keep the last odd psq row paired with the first threat/pp row of the same sign.
-    if (psqCount % 2 != 0 && thr.size() > 0)
     {
-        --psqCount;
-        thrBegin = 1;
+        assert(psqRemoved.size() == 1 || psqRemoved.size() == 2);
+        assert(psqAdded.size() == 1 || psqAdded.size() == 2);
     }
-#endif
 
-    acc = apply_features<sign, Incremental>(j, acc, psq.begin(), psqCount, psqWeights);
-#if defined(USE_PAIRED_WIDENING_ADD)
-    if (thrBegin)
-        acc = apply_feature_pair<sign>(acc, &psqWeights[usize(psq[psqCount]) * Dimensions],
-                                       &thrWeights[usize(thr[0]) * Dimensions]);
-#endif
-    return apply_features<sign>(j, acc, thr.begin() + thrBegin, thr.ssize() - thrBegin, thrWeights);
+    const i8 *oddRemoved, *oddAdded;
+    acc = apply_features_but_odd<-1, Incremental>(j, acc, psqRemoved.begin(), psqRemoved.ssize(),
+                                                  thrRemoved.begin(), thrRemoved.ssize(), ft,
+                                                  psqBase, oddRemoved);
+    acc = apply_features_but_odd<+1, Incremental>(j, acc, psqAdded.begin(), psqAdded.ssize(),
+                                                  thrAdded.begin(), thrAdded.ssize(), ft, psqBase,
+                                                  oddAdded);
+    return apply_odd_features(j, acc, oddRemoved, oddAdded);
 }
 
 void apply_combined(Color                              perspective,
@@ -543,16 +609,12 @@ void apply_combined(Color                              perspective,
     const auto& fromAcc = from.accumulation[perspective];
     auto&       toAcc   = to.accumulation[perspective];
 
-    Tile acc;
-
     for (IndexType j = 0; j < Dimensions; increment_index(j))
     {
-        acc = load_tile(j, fromAcc.data());
+        Tile acc = load_tile(j, fromAcc.data());
 
-        acc = apply_combined_features<-1, true>(j, acc, psqRemoved, thrRemoved, featureTransformer,
-                                                psqWeights);
-        acc = apply_combined_features<+1, true>(j, acc, psqAdded, thrAdded, featureTransformer,
-                                                psqWeights);
+        acc = apply_combined_features<true>(j, acc, psqRemoved, thrRemoved, psqAdded, thrAdded,
+                                            featureTransformer, psqWeights);
 
         store_tile(j, toAcc.data(), acc);
     }
@@ -852,14 +914,11 @@ void update_accumulator_hybrid(Color                     perspective,
     const auto& fromAcc = computed.accumulation[perspective];
     auto&       toAcc   = target.accumulation[perspective];
 
-    Tile acc;
-
     for (IndexType j = 0; j < Dimensions; increment_index(j))
     {
-        acc = load_tile(j, newEntry.accumulation.data());
+        Tile acc = load_tile(j, newEntry.accumulation.data());
 
-        acc = apply_psq_features<-1>(j, acc, newRemove, psqWeights);
-        acc = apply_psq_features<+1>(j, acc, newAdd, psqWeights);
+        acc = apply_psq_features(j, acc, newRemove, newAdd, featureTransformer, psqWeights);
 
         store_tile(j, newEntry.accumulation.data(), acc);
 
@@ -872,10 +931,8 @@ void update_accumulator_hybrid(Color                     perspective,
 
         // ... then we adjust
         // The old entry's removed psq features have to be added back, its added ones removed
-        acc =
-          apply_combined_features<-1>(j, acc, oldAdd, thrRemoved, featureTransformer, psqWeights);
-        acc =
-          apply_combined_features<+1>(j, acc, oldRemove, thrAdded, featureTransformer, psqWeights);
+        acc = apply_combined_features(j, acc, oldAdd, thrRemoved, oldRemove, thrAdded,
+                                      featureTransformer, psqWeights);
 
         store_tile(j, toAcc.data(), acc);
     }
@@ -912,14 +969,11 @@ void update_accumulator_refresh_cache(Color                     perspective,
 
     accumulator.computed[perspective] = true;
 
-    Tile acc;
-
     for (IndexType j = 0; j < Dimensions; increment_index(j))
     {
-        acc = load_tile(j, entry.accumulation.data());
+        Tile acc = load_tile(j, entry.accumulation.data());
 
-        acc = apply_psq_features<-1>(j, acc, removed, psqWeights);
-        acc = apply_psq_features<+1>(j, acc, added, psqWeights);
+        acc = apply_psq_features(j, acc, removed, added, featureTransformer, psqWeights);
 
         store_tile(j, &entry.accumulation[0], acc);
 
